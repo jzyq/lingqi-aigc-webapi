@@ -1,0 +1,1 @@
+source $CONDA_ROOT/bin/activate ./.venv && python app.py $*

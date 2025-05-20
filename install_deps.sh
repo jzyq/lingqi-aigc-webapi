@@ -1,0 +1,1 @@
+source $CONDA_ROOT/bin/activate ./.venv && conda install -y --file requirements.txt
