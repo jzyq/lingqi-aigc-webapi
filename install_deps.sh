@@ -1,1 +1,1 @@
-source $CONDA_ROOT/bin/activate ./.venv && conda install -y --file requirements.txt
+source $CONDA_PREFIX/bin/activate ./.venv && conda install -y --file requirements.txt
