@@ -5,13 +5,10 @@ from pydantic import BaseModel
 from typing import Optional, Union
 from typing_extensions import Annotated
 import random
+from . import utils
 
 random.seed()
 app = FastAPI()
-
-# 微信开放平台配置（需替换为实际值）
-APP_ID = ""
-APP_SECRET = ""
 
 TOKEN_LEN = 16
 
@@ -50,7 +47,8 @@ async def wechat_callback(request: Request):
         raise HTTPException(status_code=400, detail="Missing authorization code")
 
     # Step 2: 用code换取access_token
-    token_url = f"https://api.weixin.qq.com/sns/oauth2/access_token?appid={APP_ID}&secret={APP_SECRET}&code={code}&grant_type=authorization_code"
+    (app_id, app_secret) = utils.get_wx_app_id_and_secret(request.app)
+    token_url = f"https://api.weixin.qq.com/sns/oauth2/access_token?appid={app_id}&secret={app_secret}&code={code}&grant_type=authorization_code"
 
     try:
         token_res = requests.get(token_url)
