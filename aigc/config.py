@@ -4,3 +4,4 @@ class Config(BaseSettings):
     api_host: str = "127.0.0.1"
     api_port: int = 8090
 
+    database_file: str = "database.db"

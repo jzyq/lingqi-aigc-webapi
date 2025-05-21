@@ -1,4 +1,7 @@
 import configparser
+import uvicorn
+from aigc import app, config, utils, models
+from argparse import ArgumentParser
 
 
 def must_load_secerts_file(path: str) -> tuple[str, str]:
@@ -14,11 +17,7 @@ def must_load_secerts_file(path: str) -> tuple[str, str]:
     return (app_id, app_secret)
 
 
-if __name__ == "__main__":
-    import uvicorn
-    from aigc import app, config, utils
-    from argparse import ArgumentParser
-
+def main() -> None:
     # Load default config, default can overwrite by env variables.
     default_config = config.Config()
 
@@ -38,8 +37,16 @@ if __name__ == "__main__":
     (app_id, app_secret) = must_load_secerts_file(arguments.secret)
     utils.set_wx_app_id_and_secret(app.app, app_id, app_secret)
 
+    # Initialize databases.
+    db_file = default_config.database_file
+    models.initialize_database_io(db_file)
+
     # Start webapi service.
     try:
         uvicorn.run(app.app, host=arguments.host, port=arguments.port)
     except KeyboardInterrupt:
         pass
+
+
+if __name__ == "__main__":
+    main()

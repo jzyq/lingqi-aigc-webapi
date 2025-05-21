@@ -6,6 +6,8 @@ from typing import Optional, Union
 from typing_extensions import Annotated
 import random
 from . import utils
+from models import DBSessionDep, user
+
 
 random.seed()
 app = FastAPI()
@@ -13,19 +15,12 @@ app = FastAPI()
 TOKEN_LEN = 16
 
 
-class WxUserInfo(BaseModel):
-    open_id: str
-    nickname: str
-    avatar: str
-    unionid: str
-
-
 class AuthCode(BaseModel):
     code: str
     state: Optional[str] = None
 
 
-user_infos: dict[str, WxUserInfo] = {}
+user_infos: dict[str, user.WxUserInfo] = {}
 
 
 def generate_random_hex_str(length: int) -> str:
@@ -34,7 +29,7 @@ def generate_random_hex_str(length: int) -> str:
 
 
 @app.get("/wx/callback")
-async def wechat_callback(request: Request):
+async def wechat_callback(request: Request, db: DBSessionDep):
     """
     微信扫码登录回调接口
     流程：1. 接收code -> 2. 换取access_token -> 3. 获取用户信息
@@ -79,12 +74,16 @@ async def wechat_callback(request: Request):
             )
 
         # 提取关键用户信息
-        uinfo = WxUserInfo(
+        uinfo = user.WxUserInfo(
             open_id=user_data.get("openid"),
             nickname=user_data.get("nickname"),
             avatar=user_data.get("headimgurl"),
             unionid=user_data.get("unionid"),
         )
+        db.add(uinfo)
+        db.commit()
+        db.refresh(uinfo)
+
         token = generate_random_hex_str(TOKEN_LEN)
         user_infos[token] = uinfo
 
@@ -98,7 +97,7 @@ async def wechat_callback(request: Request):
 @app.get("/api/user/info")
 async def user_info(
     authorization: Annotated[Union[str, None], Header()] = None,
-) -> WxUserInfo:
+) -> user.WxUserInfo:
     if authorization is None:
         raise HTTPException(status_code=401, detail=f"No authorization token")
 
@@ -107,3 +106,6 @@ async def user_info(
         return user_infos[token]
 
     raise HTTPException(status_code=401, detail="No authorization token")
+
+async def prepare_order():
+    pass
