@@ -1,9 +1,12 @@
 from Crypto.PublicKey import RSA
 from Crypto.Signature import PKCS1_v1_5
 from Crypto.Hash import SHA256
+from Crypto.Random import random
 import base64
 
-def sha256_with_rsa_b64_encode(data: bytes, rsa_key: str | bytes) -> bytes:
+
+# Ganerate the signature of data with SHA256 RSA encrypted using private key.
+def sha256_with_rsa_sign(rsa_key: str | bytes, data: bytes) -> bytes:
     pubkey = RSA.importKey(rsa_key)
     signer = PKCS1_v1_5.new(pubkey)
     digest = SHA256.new()
@@ -12,3 +15,31 @@ def sha256_with_rsa_b64_encode(data: bytes, rsa_key: str | bytes) -> bytes:
     sign = signer.sign(digest)
 
     return base64.b64encode(sign)
+
+
+# Verify the signature of data with SHA256 RSA encrypted using public key.
+# Input signature should be a base64 encoded bytes.
+def sha256_with_rsa_verify(pub_key: str | bytes, signature: bytes, data: str | bytes) -> bool:
+    try:
+        public_key = RSA.import_key(pub_key)
+
+        if isinstance(data, str):
+            data = data.encode()
+
+        data_hash = SHA256.new(data)
+        signature = base64.b64decode(signature)
+
+        verifier = PKCS1_v1_5.new(public_key)
+        verifier.verify(data_hash, signature)
+        return True
+
+    except (ValueError, TypeError):
+        return False
+
+
+# Make a nonce string which represent a 128-bits little endian non-sign integer.
+def make_nonce_str() -> str:
+    length = 16
+    bitwidth = 8
+    num = random.getrandbits(bitwidth * length)  # 16 one Byte number.
+    return num.to_bytes(length, byteorder="little", signed=False).hex()
