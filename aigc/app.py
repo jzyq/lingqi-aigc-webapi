@@ -6,13 +6,14 @@ from typing import Optional, Union, Annotated
 import random
 from . import deps
 from .models import user
+from .wx import client
 
 random.seed()
 app = FastAPI()
 
 TOKEN_LEN = 16
 
-HeaderField = Annotated[str | None, Header()]
+HeaderField = Annotated[str, Header()]
 
 class AuthCode(BaseModel):
     code: str
@@ -94,7 +95,16 @@ async def wechat_login_callback(request: Request, db: deps.DBSession, wx: deps.W
         raise HTTPException(status_code=500, detail=f"User info fetch failed: {str(e)}")
 
 @app.post("/api/wx/pay/callback")
-async def wechat_pay_callback(wechatpay_timestamp: HeaderField, wechatpay_nonce: HeaderField, wechatpay_signature: HeaderField, request: Request) -> Response:
+async def wechat_pay_callback(wechatpay_timestamp: HeaderField, 
+                              wechatpay_nonce: HeaderField, 
+                              wechatpay_signature: HeaderField, 
+                              wx: deps.WxClient,
+                              request: Request) -> Response:
+    
+    body = await request.body()
+    client.CryptoHelper.verify(wx.sec, wechatpay_timestamp, wechatpay_nonce, wechatpay_signature, body.decode())
+
+    print(body)
     return Response()
     
 
