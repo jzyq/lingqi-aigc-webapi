@@ -6,12 +6,12 @@ from sqlalchemy import Engine
 
 
 def _get_session(req: Request) -> Generator[Session, None, None]:
-    with Session(req.state.engine) as s:
+    with Session(req.app.state.engine) as s:
         yield s
 
 
 def _get_wx_client(req: Request) -> client.WxClient:
-    return req.state.wx_client
+    return req.app.state.wx_client
 
 
 DBSession = Annotated[Session, Depends(_get_session)]
