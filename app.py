@@ -1,20 +1,6 @@
-import configparser
 import uvicorn
-from aigc import app, config, utils, models
+from aigc import app, config, models, wx, deps
 from argparse import ArgumentParser
-
-
-def must_load_secerts_file(path: str) -> tuple[str, str]:
-    secrets = configparser.ConfigParser()
-    secrets.read(path)
-    app_id = secrets.get("wx", "app_id", fallback="")
-    app_secret = secrets.get("wx", "app_secret", fallback="")
-
-    if app_id == "" or app_secret == "":
-        print("app secrets is required. check secrtes file.")
-        exit(1)
-
-    return (app_id, app_secret)
 
 
 def main() -> None:
@@ -26,20 +12,28 @@ def main() -> None:
     parser.add_argument(
         "secret", help="The secret file which contain senstive data like appid."
     )
+    parser.add_argument("apiclient_key_file",
+                        help="path to the api client key file from wx.")
+    parser.add_argument("pub_key_file", help="path to the wx pub key file.")
     parser.add_argument(
         "--host", help="WEB API host address", default=default_config.api_host
     )
-    parser.add_argument("--port", help="WEB API port", default=default_config.api_port)
+    parser.add_argument("--port", help="WEB API port",
+                        default=default_config.api_port)
     arguments = parser.parse_args()
 
     # Load and parse secerts file.
     # Set it to app.
-    (app_id, app_secret) = must_load_secerts_file(arguments.secret)
-    utils.set_wx_app_id_and_secret(app.app, app_id, app_secret)
+    sec = wx.must_load_secert(
+        secerts=arguments.secret,
+        apiclient_key=arguments.apiclient_key_file,
+        pub_key=arguments.pub_key_file)
+    deps.set_wx_client_deps(app.app, sec)
 
     # Initialize databases.
     db_file = default_config.database_file
-    models.initialize_database_io(db_file)
+    engine = models.initialize_database_io(db_file)
+    deps.set_db_session_deps(app.app, engine)
 
     # Start webapi service.
     try:

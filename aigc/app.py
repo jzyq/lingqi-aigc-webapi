@@ -1,19 +1,18 @@
-from fastapi import FastAPI, Request, HTTPException, Header
+from fastapi import FastAPI, Request, HTTPException, Header, Response
 from fastapi.responses import RedirectResponse
 import requests
 from pydantic import BaseModel
-from typing import Optional, Union
-from typing_extensions import Annotated
+from typing import Optional, Union, Annotated
 import random
-from . import utils
-from models import DBSessionDep, user
-
+from . import deps
+from .models import user
 
 random.seed()
 app = FastAPI()
 
 TOKEN_LEN = 16
 
+HeaderField = Annotated[str | None, Header()]
 
 class AuthCode(BaseModel):
     code: str
@@ -28,8 +27,8 @@ def generate_random_hex_str(length: int) -> str:
     return "".join(seq)
 
 
-@app.get("/wx/callback")
-async def wechat_callback(request: Request, db: DBSessionDep):
+@app.get("/api/wx/login/callback")
+async def wechat_login_callback(request: Request, db: deps.DBSession, wx: deps.WxClient):
     """
     微信扫码登录回调接口
     流程：1. 接收code -> 2. 换取access_token -> 3. 获取用户信息
@@ -42,7 +41,8 @@ async def wechat_callback(request: Request, db: DBSessionDep):
         raise HTTPException(status_code=400, detail="Missing authorization code")
 
     # Step 2: 用code换取access_token
-    (app_id, app_secret) = utils.get_wx_app_id_and_secret(request.app)
+    app_id= wx.sec.app_id
+    app_secret = wx.sec.app_secret
     token_url = f"https://api.weixin.qq.com/sns/oauth2/access_token?appid={app_id}&secret={app_secret}&code={code}&grant_type=authorization_code"
 
     try:
@@ -93,6 +93,10 @@ async def wechat_callback(request: Request, db: DBSessionDep):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"User info fetch failed: {str(e)}")
 
+@app.post("/api/wx/pay/callback")
+async def wechat_pay_callback(wechatpay_timestamp: HeaderField, wechatpay_nonce: HeaderField, wechatpay_signature: HeaderField, request: Request) -> Response:
+    return Response()
+    
 
 @app.get("/api/user/info")
 async def user_info(
@@ -106,6 +110,3 @@ async def user_info(
         return user_infos[token]
 
     raise HTTPException(status_code=401, detail="No authorization token")
-
-async def prepare_order():
-    pass

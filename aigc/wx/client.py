@@ -3,9 +3,57 @@ import requests
 from . import models, secret, crypto
 import json
 import time
+from urllib.parse import quote_plus
+
 
 WX_MAIN_HOST = "https://api.mch.weixin.qq.com"
-URL_PREPARE_TRANSACTION = "/v3/pay/transactions/native"
+
+URL_OPEN_TRANSACTION = "/v3/pay/transactions/native"
+URL_QUERY_TRANSACTION_BY_TRADE_NO = "/v3/pay/transactions/out-trade-no/{}"
+URL_CLOSE_TRANSACTION = "/v3/pay/transactions/out-trade-no/{}/close"
+
+
+WX_HEADER_SINGATURE = "Wechatpay-Signature"
+WX_HEADER_TIMESTAMP = "Wechatpay-Timestamp"
+WX_HEADER_NONCE = "Wechatpay-Nonce "
+
+
+JSON_HEADER = {
+    "Acctpt": "application/json",
+    "Content-Type": "application/json"
+}
+
+
+class VerifyError(Exception):
+    pass
+
+
+class CryptoHelper:
+
+    @staticmethod
+    def make_timestamp_str() -> str:
+        return str(int(time.time()))
+
+    @staticmethod
+    def make_auth_str(sec: secret.WxSecrets, timestamp: str, nonce: str, sign: str) -> str:
+        auth_type = "WECHATPAY2-SHA256-RSA2048"
+        return f'{auth_type} mchid="{sec.mch_id}",nonce_str="{nonce}",signature="{sign}",timestamp="{timestamp}",serial_no="{sec.mch_cert_serial}"'
+
+    @staticmethod
+    def signature(sec: secret.WxSecrets, method: str, url: str, body: str) -> dict[str, str]:
+        nonce = crypto.make_nonce_str()
+        timestamp = CryptoHelper.make_timestamp_str()
+        prepare_sign = f"{method}\n{url}\n{timestamp}\n{nonce}\n{body}\n"
+        sign = crypto.sha256_with_rsa_sign(
+            sec.apiclient_key, prepare_sign.encode())
+        auth = CryptoHelper.make_auth_str(
+            sec, timestamp, nonce, sign.decode())
+        return {"Authorization": auth}
+
+    @staticmethod
+    def verify(sec: secret.WxSecrets, timestamp: str, nonce: str, sign: str, data: str) -> bool:
+        data = f"{timestamp}\n{nonce}\n{data}\n"
+        return crypto.sha256_with_rsa_verify(sec.wxpay_pub_key, sign.encode(), data)
 
 
 def new_client(secerts: secret.WxSecrets) -> 'WxClient':
@@ -17,7 +65,7 @@ class WxClient:
     def __init__(self, sec: secret.WxSecrets) -> None:
         self.sec = sec
 
-    async def prepare_order(self, order: models.Order) -> str:
+    async def start_transaction(self, order: models.Order) -> str:
 
         # Prepare request body, add appid and mchid into request data.
         request_body = order.model_dump(
@@ -28,43 +76,90 @@ class WxClient:
         })
         body = json.dumps(request_body, ensure_ascii=False)
 
-        # Sign request and setup header.
-        auth = self._signature_request("POST", URL_PREPARE_TRANSACTION, body)
-        headers = self._make_header(auth)
+        (code, content) = await self.post(URL_OPEN_TRANSACTION, params=None, body=body.encode())
 
-        # send req.
-        url = WX_MAIN_HOST + URL_PREPARE_TRANSACTION
-        resp = await asyncio.to_thread(requests.post, url, data=body.encode(), headers=headers)
-        if resp.status_code != 200:
-            print(resp.status_code)
-            print(resp.json())
+        if code == 200:
+            return json.loads(content)['code_url']
+        else:
             return ""
 
-        data = resp.json()
-        return data["code_url"]
+    async def query_transaction_by_out_trade_no(self, out_trade_no: str):
+        url = URL_QUERY_TRANSACTION_BY_TRADE_NO.format(
+            quote_plus(out_trade_no))
+        params = {"mchid": self.sec.mch_id}
 
-    def _signature_request(self, method: str, url: str, body: str) -> str:
-        nonce = crypto.make_nonce_str()
-        timestamp = self._timestamp_str()
+        (code, content) = await self.get(url, params=params, body=None)
+        print(code)
+        print(content.decode())
 
-        prepare_sign = f"{method}\n{url}\n{timestamp}\n{nonce}\n{body}\n"
-        sign = crypto.sha256_with_rsa_sign(
-            self.sec.apiclient_key, prepare_sign.encode())
+    async def close_transaction(self, out_trade_no: str):
+        url = URL_CLOSE_TRANSACTION.format(quote_plus(out_trade_no))
+        body = json.dumps({"mchid": self.sec.mch_id}, ensure_ascii=False)
 
-        auth = self._make_authorization(timestamp, nonce, sign)
+        (code, content) = await self.post(url, params=None, body=body.encode())
 
-        return auth
+        # expect statuc code == 204
+        print(code)
+        print(content)
 
-    def _make_header(self, auth: str) -> dict[str, str]:
-        return {
-            "Authorization": auth,
-            "Accept": "application/json",
-            "Content-Type": "application/json"
-        }
+    async def get(self, url: str, params: dict[str, str] | None, body: bytes | None, verify: bool = False) -> tuple[int, bytes]:
+        if params is not None:
+            params_str = "?" + \
+                "&".join(
+                    [f"{quote_plus(p)}={quote_plus(params[p])}" for p in params])
+        else:
+            params_str = ""
 
-    def _make_authorization(self, timestamp: str, nonce: str, signature: bytes) -> str:
-        auth_type = "WECHATPAY2-SHA256-RSA2048"
-        return f'{auth_type} mchid="{self.sec.mch_id}",nonce_str="{nonce}",signature="{signature.decode()}",timestamp="{timestamp}",serial_no="{self.sec.mch_cert_serial}"'
+        url = url + params_str
 
-    def _timestamp_str(self) -> str:
-        return str(int(time.time()))
+        auth_header = CryptoHelper.signature(
+            self.sec, method="GET", url=url, body=body.decode() if body is not None else "")
+        auth_header.update(JSON_HEADER)
+
+        resp = await asyncio.to_thread(requests.get,
+                                       url=WX_MAIN_HOST + url,
+                                       data=body,
+                                       headers=auth_header)
+
+        if verify:
+            sign = resp.headers.get(WX_HEADER_SINGATURE)
+            timestamp = resp.headers.get(WX_HEADER_TIMESTAMP)
+            nonce = resp.headers.get(WX_HEADER_NONCE)
+
+            if sign and timestamp and nonce and CryptoHelper.verify(self.sec, timestamp, nonce, sign, resp.content.decode()):
+                return (resp.status_code, resp.content)
+            else:
+                raise VerifyError()
+        else:
+            return (resp.status_code, resp.content)
+
+    async def post(self, url: str, params: dict[str, str] | None, body: bytes | None, verify: bool = False) -> tuple[int, bytes]:
+        if params is not None:
+            params_str = "?" + \
+                "&".join(
+                    [f"{quote_plus(p)}={quote_plus(params[p])}" for p in params])
+        else:
+            params_str = ""
+
+        url = url + params_str
+
+        auth_header = CryptoHelper.signature(self.sec, method="POST", url=url,
+                                             body=body.decode() if body is not None else "")
+        auth_header.update(JSON_HEADER)
+
+        resp = await asyncio.to_thread(requests.post,
+                                       url=WX_MAIN_HOST + url,
+                                       data=body,
+                                       headers=auth_header)
+
+        if verify:
+            sign = resp.headers.get(WX_HEADER_SINGATURE)
+            timestamp = resp.headers.get(WX_HEADER_TIMESTAMP)
+            nonce = resp.headers.get(WX_HEADER_NONCE)
+
+            if sign and timestamp and nonce and CryptoHelper.verify(self.sec, timestamp, nonce, sign, resp.content.decode()):
+                return (resp.status_code, resp.content)
+            else:
+                raise VerifyError()
+        else:
+            return (resp.status_code, resp.content)
