@@ -7,6 +7,8 @@ import random
 from . import deps
 from .models import user
 from .wx import client
+import json
+
 
 random.seed()
 app = FastAPI()
@@ -14,6 +16,7 @@ app = FastAPI()
 TOKEN_LEN = 16
 
 HeaderField = Annotated[str, Header()]
+
 
 class AuthCode(BaseModel):
     code: str
@@ -39,10 +42,11 @@ async def wechat_login_callback(request: Request, db: deps.DBSession, wx: deps.W
     state = request.query_params.get("state")
 
     if not code:
-        raise HTTPException(status_code=400, detail="Missing authorization code")
+        raise HTTPException(
+            status_code=400, detail="Missing authorization code")
 
     # Step 2: 用code换取access_token
-    app_id= wx.sec.app_id
+    app_id = wx.sec.app_id
     app_secret = wx.sec.app_secret
     token_url = f"https://api.weixin.qq.com/sns/oauth2/access_token?appid={app_id}&secret={app_secret}&code={code}&grant_type=authorization_code"
 
@@ -59,7 +63,8 @@ async def wechat_login_callback(request: Request, db: deps.DBSession, wx: deps.W
         openid = token_data["openid"]
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Token exchange failed: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Token exchange failed: {str(e)}")
 
     # Step 3: 获取用户基本信息
     user_info_url = f"https://api.weixin.qq.com/sns/userinfo?access_token={access_token}&openid={openid}"
@@ -92,21 +97,27 @@ async def wechat_login_callback(request: Request, db: deps.DBSession, wx: deps.W
         return RedirectResponse(url=f"{state}?token={token}")
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"User info fetch failed: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"User info fetch failed: {str(e)}")
+
 
 @app.post("/api/wx/pay/callback")
-async def wechat_pay_callback(wechatpay_timestamp: HeaderField, 
-                              wechatpay_nonce: HeaderField, 
-                              wechatpay_signature: HeaderField, 
+async def wechat_pay_callback(wechatpay_timestamp: HeaderField,
+                              wechatpay_nonce: HeaderField,
+                              wechatpay_signature: HeaderField,
                               wx: deps.WxClient,
                               request: Request) -> Response:
-    
+
     body = await request.body()
-    client.CryptoHelper.verify(wx.sec, wechatpay_timestamp, wechatpay_nonce, wechatpay_signature, body.decode())
+    if not client.CryptoHelper.verify(wx.sec, wechatpay_timestamp, wechatpay_nonce, wechatpay_signature, body.decode()):
+        raise HTTPException(status_code=400, detail=json.dumps({
+            "code": "FAIL",
+            "message": "失败"
+        }, ensure_ascii=False))
 
     print(body)
     return Response()
-    
+
 
 @app.get("/api/user/info")
 async def user_info(

@@ -65,7 +65,7 @@ class WxClient:
     def __init__(self, sec: secret.WxSecrets) -> None:
         self.sec = sec
 
-    async def start_transaction(self, order: models.Order) -> str:
+    async def open_transaction(self, order: models.Order) -> str:
 
         # Prepare request body, add appid and mchid into request data.
         request_body = order.model_dump(
