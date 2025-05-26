@@ -1,9 +1,11 @@
+import stat
 from typing import Annotated, Generator
-from fastapi import Depends, Request, FastAPI
+from fastapi import Depends, Request, FastAPI, HTTPException
 from sqlmodel import Session
 from .wx import secret, client
 from sqlalchemy import Engine
 import redis.asyncio as redis
+from . import common, models, sessions
 
 
 def set_db_session_deps(app: FastAPI, engine: Engine):
@@ -32,8 +34,28 @@ def get_rdb(req: Request) -> redis.Redis:
     return req.app.state.rdb
 
 
+def get_auth_token(authorization: common.HeaderField) -> str:
+    auth_type, token = authorization.split(" ")
+    if auth_type != "bearer" or token == "":
+        raise HTTPException(
+            status_code=401, detail="no valid authorization to access.")
+    return token
+
+
 Database = Annotated[Session, Depends(get_session)]
 
 WxClient = Annotated[client.WxClient, Depends(get_wx_client)]
 
 Rdb = Annotated[redis.Redis, Depends(get_rdb)]
+
+AuthToken = Annotated[str, Depends(get_auth_token)]
+
+
+async def get_user_session(rdb: Rdb, token: AuthToken) -> sessions.Session:
+    ses = await sessions.get_session_or_none(rdb, token)
+    if ses is None:
+        raise HTTPException(
+            status_code=401, detail="no valid authorization to access.")
+    return ses
+
+UserSession = Annotated[sessions.Session, Depends(get_user_session)]

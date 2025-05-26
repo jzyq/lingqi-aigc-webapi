@@ -1,16 +1,14 @@
-from fastapi import APIRouter, Request, HTTPException, Header, Response
+from fastapi import APIRouter, Request, HTTPException, Response
 from sqlmodel import select
 from fastapi.responses import RedirectResponse
-from typing import Annotated
 
-from . import deps, sessions, models, config, wx as wechat
+from . import deps, sessions, models, config, wx as wechat, common
 import json
 from loguru import logger
 
 
 router = APIRouter(prefix="/wx")
 
-HeaderField = Annotated[str, Header()]
 
 
 @router.get("/login/callback")
@@ -87,9 +85,9 @@ async def wechat_login_callback(
 
 
 @router.post("/pay/callback")
-async def wechat_pay_callback(wechatpay_timestamp: HeaderField,
-                              wechatpay_nonce: HeaderField,
-                              wechatpay_signature: HeaderField,
+async def wechat_pay_callback(wechatpay_timestamp: common.HeaderField,
+                              wechatpay_nonce: common.HeaderField,
+                              wechatpay_signature: common.HeaderField,
                               wx: deps.WxClient,
                               request: Request) -> Response:
 
@@ -110,17 +108,3 @@ async def qrcode_login(wx: deps.WxClient):
 
     # TODO: use state to pass information
     return RedirectResponse(url=wx.get_qrcode_login_url(conf.wx_qrcode_login_redirect_url, "abc"))
-
-
-# @app.get("/api/user/info")
-# async def user_info(
-#     authorization: Annotated[Union[str, None], Header()] = None,
-# ) -> models.user.WxUserInfo:
-#     if authorization is None:
-#         raise HTTPException(status_code=401, detail=f"No authorization token")
-
-#     (auth_type, token) = authorization.split()
-#     if auth_type == "bearer" and token in user_infos.keys():
-#         return user_infos[token]
-
-#     raise HTTPException(status_code=401, detail="No authorization token")
