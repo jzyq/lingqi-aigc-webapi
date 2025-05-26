@@ -1,4 +1,5 @@
 from pydantic import BaseModel
+from enum import IntEnum
 
 
 class PayAmount(BaseModel):
@@ -25,3 +26,30 @@ class Order(BaseModel):
 
     # 商户数据包，对用户不可见，wx回调时回传给商户，128个字符以内
     attach: str | None = None
+
+
+class AccessToken(BaseModel):
+    access_token: str
+    expires_in: int
+    refresh_token: str
+    openid: str
+    scope: str
+    unionid: str
+
+
+class UserSex(IntEnum):
+    unknown = 0
+    male = 1
+    female = 2
+
+
+class UserInfo(BaseModel):
+    openid: str
+    nickname: str
+    sex: UserSex
+    province: str
+    city: str
+    country: str
+    headimgurl: str
+    privilege: list[str]
+    unionid: str

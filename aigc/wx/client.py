@@ -24,6 +24,17 @@ JSON_HEADER = {
 }
 
 
+class CallError(Exception):
+
+    def __init__(self, code: int, msg: str, *args: object) -> None:
+        super().__init__(*args)
+        self.code = code
+        self.msg = msg
+
+    def __str__(self) -> str:
+        return f"errcode: {self.code}, errmsg: [{self.msg}]"
+
+
 class VerifyError(Exception):
     pass
 
@@ -163,3 +174,45 @@ class WxClient:
                 raise VerifyError()
         else:
             return (resp.status_code, resp.content)
+
+    async def verify(self, timestamp: str, nonce: str, sign: str, data: str) -> bool:
+        return CryptoHelper.verify(self.sec, timestamp, nonce, sign, data)
+
+    def get_qrcode_login_url(self, redirect_url: str, state: str) -> str:
+
+        return 'https://open.weixin.qq.com/connect/qrconnect' +\
+            f'?appid={self.sec.login_app_id}' +\
+            f'&redirect_uri={redirect_url}' +\
+            '&response_type=code&scope=snsapi_login' +\
+            f'&state={state}' +\
+            '#wechat_redirect'
+
+    async def require_access_token(self, code: str) -> models.AccessToken:
+        token_url = 'https://api.weixin.qq.com/sns/oauth2/access_token'
+        params = {
+            "appid": self.sec.login_app_id,
+            "secret": self.sec.app_secret,
+            "code": code,
+            "grant_type": "authorization_code"
+        }
+
+        resp = await asyncio.to_thread(requests.get, token_url, params=params)
+        if resp.status_code == 200:
+            return models.AccessToken.model_validate_json(resp.content)
+
+        err_data = json.loads(resp.content)
+        raise CallError(code=err_data['errcode'], msg=err_data['errmsg'])
+
+    async def fetch_user_info(self, openid: str, access_token: str) -> models.UserInfo:
+        url = "https://api.weixin.qq.com/sns/userinfo"
+        params = {
+            "access_token": access_token,
+            "openid": openid
+        }
+
+        resp = await asyncio.to_thread(requests.get, url, params=params)
+        if resp.status_code == 200:
+            return models.UserInfo.model_validate_json(resp.content)
+
+        err_data = json.loads(resp.content)
+        raise CallError(code=err_data['errcode'], msg=err_data['errmsg'])

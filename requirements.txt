@@ -5,3 +5,5 @@ fastapi
 pydantic-settings
 conda-forge::sqlmodel
 conda-forge::pycryptodome
+conda-forge::redis-py
+conda-forge::loguru

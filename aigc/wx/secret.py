@@ -7,6 +7,7 @@ class LoadWxSecertsError(Exception):
 
 
 class WxSecrets(BaseModel):
+    login_app_id: str
     app_id: str
     app_secret: str
     mch_id: str
@@ -16,6 +17,7 @@ class WxSecrets(BaseModel):
 
 
 def must_load_secert(secerts: str, apiclient_key: str, pub_key: str) -> WxSecrets:
+    login_app_id: str
     app_id: str
     app_secret: str
     merchant_id: str
@@ -26,6 +28,7 @@ def must_load_secert(secerts: str, apiclient_key: str, pub_key: str) -> WxSecret
     try:
         with open(secerts, 'r') as fp:
             data = json.load(fp)
+            login_app_id = data['login_app_id']
             app_id = data['app_id']
             app_secret = data['app_secret']
             merchant_id = data['mch_id']
@@ -38,6 +41,7 @@ def must_load_secert(secerts: str, apiclient_key: str, pub_key: str) -> WxSecret
             wx_pub_key = fp.read()
 
         return WxSecrets(
+            login_app_id=login_app_id,
             app_id=app_id, app_secret=app_secret, mch_id=merchant_id,
             mch_cert_serial=merchant_cert_erial_no, apiclient_key=client_key,
             wxpay_pub_key=wx_pub_key
