@@ -122,6 +122,8 @@ async def wechat_pay_callback(wechatpay_timestamp: common.HeaderField,
         logger.info(f"pay success of trade {result.out_trade_no}")
         recharage_order.pay_state = models.payment.PayState.success
 
+    db.commit()
+    
     return Response()
 
 
