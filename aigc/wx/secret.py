@@ -12,6 +12,7 @@ class WxSecrets(BaseModel):
     app_secret: str
     mch_id: str
     mch_cert_serial: str
+    api_v3_pwd: str
     wxpay_pub_key: bytes
     apiclient_key: bytes
 
@@ -22,6 +23,7 @@ def must_load_secert(secerts: str, apiclient_key: str, pub_key: str) -> WxSecret
     app_secret: str
     merchant_id: str
     merchant_cert_erial_no: str
+    api_v3_pwd: str
     client_key: bytes
     wx_pub_key: bytes
 
@@ -33,6 +35,7 @@ def must_load_secert(secerts: str, apiclient_key: str, pub_key: str) -> WxSecret
             app_secret = data['app_secret']
             merchant_id = data['mch_id']
             merchant_cert_erial_no = data['mch_cert_serial']
+            api_v3_pwd = data['api_v3_pwd']
 
         with open(apiclient_key, 'rb') as fp:
             client_key = fp.read()
@@ -44,7 +47,7 @@ def must_load_secert(secerts: str, apiclient_key: str, pub_key: str) -> WxSecret
             login_app_id=login_app_id,
             app_id=app_id, app_secret=app_secret, mch_id=merchant_id,
             mch_cert_serial=merchant_cert_erial_no, apiclient_key=client_key,
-            wxpay_pub_key=wx_pub_key
+            wxpay_pub_key=wx_pub_key, api_v3_pwd=api_v3_pwd
         )
     except:
         raise LoadWxSecertsError(

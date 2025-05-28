@@ -1,11 +1,10 @@
-import stat
 from typing import Annotated, Generator
 from fastapi import Depends, Request, FastAPI, HTTPException
 from sqlmodel import Session
 from .wx import secret, client
 from sqlalchemy import Engine
 import redis.asyncio as redis
-from . import common, models, sessions
+from . import common, sessions
 
 
 def set_db_session_deps(app: FastAPI, engine: Engine):

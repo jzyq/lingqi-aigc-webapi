@@ -1,6 +1,7 @@
 from sqlmodel import create_engine, SQLModel
 from sqlalchemy import Engine
-from . import user
+from . import user, payment  # type: ignore
+
 
 def initialize_database_io(db_file_name: str) -> Engine:
     sqlite_url = f"sqlite:///{db_file_name}"

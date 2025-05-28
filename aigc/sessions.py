@@ -16,6 +16,7 @@ UID_SESSION_MAP_KEY = "aigc::uid-to-ses"
 
 class Session(BaseModel):
     uid: int
+    nickname: str
     login_time: datetime
     expires: datetime
 
@@ -25,11 +26,12 @@ def generate_new_token(k: int) -> str:
     return "".join(seq)
 
 
-async def create_new_session(rdb: redis.Redis, uid: int) -> str:
+async def create_new_session(rdb: redis.Redis, uid: int, nickname: str) -> str:
     dt = datetime.now()
     ttl = config.Config().session_ttl_s
     session = Session(
         uid=uid,
+        nickname=nickname,
         login_time=dt,
         expires=dt + timedelta(seconds=ttl))
     token = generate_new_token(TOKEN_LEN)

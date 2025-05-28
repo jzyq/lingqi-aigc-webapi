@@ -89,10 +89,14 @@ class WxClient:
 
         (code, content) = await self.post(URL_OPEN_TRANSACTION, params=None, body=body.encode())
 
+        resp = json.loads(content)
         if code == 200:
-            return json.loads(content)['code_url']
+            return resp['code_url']
         else:
+            print(content)
+            # raise CallError(code=resp['errcode'], msg=resp['errmsg'])
             return ""
+            
 
     async def query_transaction_by_out_trade_no(self, out_trade_no: str):
         url = URL_QUERY_TRANSACTION_BY_TRADE_NO.format(
@@ -175,8 +179,11 @@ class WxClient:
         else:
             return (resp.status_code, resp.content)
 
-    async def verify(self, timestamp: str, nonce: str, sign: str, data: str) -> bool:
+    def verify(self, timestamp: str, nonce: str, sign: str, data: str) -> bool:
         return CryptoHelper.verify(self.sec, timestamp, nonce, sign, data)
+
+    def decrypt(self, ciphertext: str, nonce: str, associate: str) -> bytes:
+        return crypto.decrypt_aes_256_gcm(self.sec.api_v3_pwd, ciphertext, nonce, associate)
 
     def get_qrcode_login_url(self, redirect_url: str, state: str) -> str:
 
