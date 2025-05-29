@@ -1,9 +1,10 @@
 import uvicorn
-from aigc import config, models, wx, deps, router
+from aigc import config, models, wx, deps, router, bg_tasks
 from argparse import ArgumentParser
 import redis.asyncio as redis
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
+from sqlmodel import Session
 
 
 def main() -> None:
@@ -47,7 +48,14 @@ def main() -> None:
         rdb = redis.Redis(connection_pool=conn_pool)
         deps.set_rdb_deps(app, rdb)
 
+        dbses = Session(engine)
+        refresh_task = bg_tasks.arrage_refresh_subscriptions(dbses)
+
         yield
+
+        refresh_task.cancel()
+        await refresh_task
+        dbses.close()
 
         await conn_pool.aclose()
 

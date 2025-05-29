@@ -55,3 +55,9 @@ class Recharge(SQLModel, table=True):
     success_time: datetime | None = None
     reason: str | None = None
     pay_state: PayState = PayState.on_going
+
+
+class SubscriptionsRefreshLog(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    refresh_time: datetime
+    cnt: int
