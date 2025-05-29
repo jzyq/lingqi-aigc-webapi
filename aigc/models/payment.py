@@ -63,6 +63,12 @@ class PayCallbackResult(BaseModel):
     payer: PayCallbackPayerInfo
 
 
+class GetPaymentStateResponse(BaseModel):
+    tradeid: str
+    state: PayState
+    desc: str | None = None
+
+
 class Recharge(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     uid: int = Field(index=True)

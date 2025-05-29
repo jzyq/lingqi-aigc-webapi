@@ -1,7 +1,8 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from . import deps, wx, models, config, common
 from loguru import logger
 from datetime import datetime, timedelta
+from sqlmodel import select
 
 router = APIRouter(prefix="/payment")
 
@@ -34,3 +35,20 @@ async def open_payment(req: models.payment.OpenPaymentRequest,
     db.commit()
 
     return models.payment.OpenPaymentResponse(url=url, tradeid=tradeid)
+
+
+@router.get("/state")
+async def get_payment_state(tradeid: str,
+                            ses: deps.UserSession, db: deps.Database) -> models.payment.GetPaymentStateResponse:
+
+    order = db.exec(select(models.payment.Recharge).where(
+        models.payment.Recharge.tradeid == tradeid)).one_or_none()
+    if order is None:
+        logger.error(f"no such recharge order which trade id is {tradeid}")
+        raise HTTPException(status_code=400, detail="no such trade id.")
+
+    return models.payment.GetPaymentStateResponse(
+        tradeid=tradeid,
+        state=order.pay_state,
+        desc=order.reason
+    )
