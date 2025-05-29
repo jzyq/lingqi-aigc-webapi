@@ -29,7 +29,7 @@ async def open_payment(req: models.payment.OpenPaymentRequest,
     url = await wx_client.open_transaction(order)
     logger.info(f"recharge order {tradeid} pay url: {url}")
 
-    payment = models.payment.Recharge(
+    payment = models.db.Recharge(
         uid=ses.uid, tradeid=tradeid, amount=req.amount, create_time=dt, expires=expires_in)
     db.add(payment)
     db.commit()
@@ -41,8 +41,8 @@ async def open_payment(req: models.payment.OpenPaymentRequest,
 async def get_payment_state(tradeid: str,
                             ses: deps.UserSession, db: deps.Database) -> models.payment.GetPaymentStateResponse:
 
-    order = db.exec(select(models.payment.Recharge).where(
-        models.payment.Recharge.tradeid == tradeid)).one_or_none()
+    order = db.exec(select(models.db.Recharge).where(
+        models.db.Recharge.tradeid == tradeid)).one_or_none()
     if order is None:
         logger.error(f"no such recharge order which trade id is {tradeid}")
         raise HTTPException(status_code=400, detail="no such trade id.")

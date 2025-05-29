@@ -17,3 +17,5 @@ class Config(BaseSettings):
     wx_payment_callback: str = "https://www.lingqi.tech/aigc/api/wx/pay/callback"
 
     payment_expires_in_s: int = 300
+
+    free_subscription_magic_point: int = 3

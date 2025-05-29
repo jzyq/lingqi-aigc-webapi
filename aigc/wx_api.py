@@ -5,9 +5,11 @@ from fastapi.responses import RedirectResponse
 from . import deps, sessions, models, config, wx as wechat, common
 import json
 from loguru import logger
+from datetime import datetime
 
 
 router = APIRouter(prefix="/wx")
+conf = config.Config()
 
 
 @router.get("/login/callback")
@@ -29,14 +31,14 @@ async def wechat_login_callback(
         logger.error(f"fetch wx user info error, {e}")
         raise HTTPException(status_code=500, detail=e.msg)
 
-    exists_wxuinfo = db.exec(select(models.user.WxUserInfo).where(
-        models.user.WxUserInfo.unionid == user_info.unionid)).one_or_none()
+    exists_wxuinfo = db.exec(select(models.db.WxUserInfo).where(
+        models.db.WxUserInfo.unionid == user_info.unionid)).one_or_none()
 
     # If wx user already exists. just do login.
     if exists_wxuinfo is not None:
         logger.debug(f"already have user {exists_wxuinfo.unionid}")
 
-        user = db.get(models.user.User, exists_wxuinfo.uid)
+        user = db.get(models.db.User, exists_wxuinfo.uid)
         assert user is not None and user.id is not None
 
         # If already login and valid, use same one.
@@ -57,8 +59,8 @@ async def wechat_login_callback(
         logger.info(f"new wx user {user_info.unionid} register.")
 
         # Create new user.
-        new_user = models.user.User(username=f"wx_{user_info.unionid}", nickname=user_info.nickname,
-                                    avatar=user_info.headimgurl, wx_id=user_info.unionid)
+        new_user = models.db.User(username=f"wx_{user_info.unionid}", nickname=user_info.nickname,
+                                  avatar=user_info.headimgurl, wx_id=user_info.unionid)
         db.add(new_user)
         db.commit()
         db.refresh(new_user)
@@ -66,7 +68,7 @@ async def wechat_login_callback(
         # Associate user and wx user info then write to database.
         assert new_user.id is not None
 
-        wx_record = models.user.WxUserInfo(
+        wx_record = models.db.WxUserInfo(
             openid=user_info.openid,
             uid=new_user.id,
             avatar=user_info.headimgurl,
@@ -74,6 +76,15 @@ async def wechat_login_callback(
             unionid=user_info.unionid
         )
         db.add(wx_record)
+        db.commit()
+
+        # Give a init point subscription.
+        dt = datetime.now()
+        init_point = conf.free_subscription_magic_point
+        subscription = models.db.MagicPointSubscription(uid=new_user.id, stype=models.db.SubscriptionType.subscription,
+                                                        init=init_point, remains=init_point,
+                                                        ctime=dt, utime=dt)
+        db.add(subscription)
         db.commit()
 
         token = await sessions.create_new_session(rdb, new_user.id, new_user.nickname)
@@ -108,8 +119,8 @@ async def wechat_pay_callback(wechatpay_timestamp: common.HeaderField,
     result = models.payment.PayCallbackResult.model_validate_json(plaintext)
     logger.debug(result.model_dump_json())
 
-    recharage_order = db.exec(select(models.payment.Recharge).where(
-        models.payment.Recharge.tradeid == result.out_trade_no)).one()
+    recharage_order = db.exec(select(models.db.Recharge).where(
+        models.db.Recharge.tradeid == result.out_trade_no)).one()
 
     # Update recharge order state.
     recharage_order.transaction_id = result.transaction_id
@@ -117,19 +128,16 @@ async def wechat_pay_callback(wechatpay_timestamp: common.HeaderField,
     recharage_order.reason = result.trade_state_desc
     if result.trade_state != "SUCCESS":
         logger.warning(f"pay failed of trade {result.out_trade_no}")
-        recharage_order.pay_state = models.payment.PayState.failed
+        recharage_order.pay_state = models.db.PayState.failed
     else:
         logger.info(f"pay success of trade {result.out_trade_no}")
-        recharage_order.pay_state = models.payment.PayState.success
+        recharage_order.pay_state = models.db.PayState.success
 
     db.commit()
-    
+
     return Response()
 
 
 @router.get("/qrlogin")
 async def qrcode_login(wx: deps.WxClient):
-    conf = config.Config()
-
-    # TODO: use state to pass information
-    return RedirectResponse(url=wx.get_qrcode_login_url(conf.wx_qrcode_login_redirect_url, "abc"))
+    return RedirectResponse(url=wx.get_qrcode_login_url(conf.wx_qrcode_login_redirect_url, ""))
