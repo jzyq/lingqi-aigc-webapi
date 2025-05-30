@@ -1,7 +1,6 @@
 from sqlmodel import Session, select
 from datetime import datetime, timedelta
 from loguru import logger
-from sympy import sec
 from . import models
 import asyncio
 

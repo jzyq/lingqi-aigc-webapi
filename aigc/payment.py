@@ -10,12 +10,24 @@ router = APIRouter(prefix="/payment")
 @router.post("/open")
 async def open_payment(req: models.payment.OpenPaymentRequest,
                        ses: deps.UserSession, wx_client: deps.WxClient,
+                       plans: deps.SubscriptionPlan,
                        db: deps.Database) -> models.payment.OpenPaymentResponse:
+
+    # Check subscription plans.
+    subplan: config.SubscriptionPlan | None = None
+    for p in plans:
+        if p.price == req.amount:
+            subplan = p
+            break
+
+    if not subplan:
+        raise HTTPException(
+            400, f"pay amount {req.amount} can not find a match subscription plan.")
 
     conf = config.Config()
     dt = datetime.now()
     tradeid = wx.make_nonce_str(16)
-    desc = f"充值"
+    desc = f"充值 {subplan.price / 100} 开通 {subplan.month} 月会员"
     expires_in = dt + timedelta(seconds=conf.payment_expires_in_s)
 
     logger.info(

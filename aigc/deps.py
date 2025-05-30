@@ -1,10 +1,12 @@
-from typing import Annotated, Generator
+from typing import Annotated, Generator, Callable
 from fastapi import Depends, Request, FastAPI, HTTPException
 from sqlmodel import Session
 from .wx import secret, client
 from sqlalchemy import Engine
 import redis.asyncio as redis
-from . import common, sessions
+from . import common, sessions, config
+import csv
+from loguru import logger
 
 
 def set_db_session_deps(app: FastAPI, engine: Engine):
@@ -41,6 +43,32 @@ def get_auth_token(authorization: common.HeaderField) -> str:
     return token
 
 
+def get_subscriptions_plan() -> Callable[[], list[config.SubscriptionPlan]]:
+    conf = config.Config()
+    subscriptions: list[config.SubscriptionPlan] = []
+
+    # Read subscription plan config file.
+    with open(conf.subscriptions_plan_file, 'r') as fp:
+        plans = csv.reader(fp)
+        for (price_str, month_str, point_each_day) in plans:
+            try:
+                subplan = config.SubscriptionPlan(
+                    price=int(price_str), month=int(month_str), point_each_day=int(point_each_day))
+                subscriptions.append(subplan)
+            except ValueError:
+                continue
+
+    logger.info(
+        f"load subscription plans, {len(subscriptions)} subscription plans:")
+    for plan in subscriptions:
+        logger.info(
+            f"{plan.price / 100} CNY for {plan.month} month, {plan.point_each_day} points each day.")
+
+    def getter() -> list[config.SubscriptionPlan]:
+        return subscriptions
+    return getter
+
+
 Database = Annotated[Session, Depends(get_session)]
 
 WxClient = Annotated[client.WxClient, Depends(get_wx_client)]
@@ -48,6 +76,9 @@ WxClient = Annotated[client.WxClient, Depends(get_wx_client)]
 Rdb = Annotated[redis.Redis, Depends(get_rdb)]
 
 AuthToken = Annotated[str, Depends(get_auth_token)]
+
+SubscriptionPlan = Annotated[list[config.SubscriptionPlan], Depends(
+    get_subscriptions_plan())]
 
 
 async def get_user_session(rdb: Rdb, token: AuthToken) -> sessions.Session:

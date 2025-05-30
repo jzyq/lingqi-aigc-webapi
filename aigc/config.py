@@ -1,4 +1,5 @@
 from pydantic_settings import BaseSettings
+from pydantic import BaseModel
 
 
 class Config(BaseSettings):
@@ -10,6 +11,7 @@ class Config(BaseSettings):
     redis_db: int = 0
 
     database_file: str = "database.db"
+    subscriptions_plan_file: str = "subscriptions.csv"
 
     session_ttl_s: int = 3600
 
@@ -19,3 +21,9 @@ class Config(BaseSettings):
     payment_expires_in_s: int = 300
 
     free_subscription_magic_point: int = 3
+
+
+class SubscriptionPlan(BaseModel):
+    price: int
+    month: int
+    point_each_day: int

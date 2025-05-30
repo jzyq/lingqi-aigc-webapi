@@ -1,3 +1,4 @@
+from calendar import month
 from fastapi import APIRouter, Request, HTTPException, Response
 from sqlmodel import select
 from fastapi.responses import RedirectResponse
@@ -6,6 +7,7 @@ from . import deps, sessions, models, config, wx as wechat, common
 import json
 from loguru import logger
 from datetime import datetime
+from dateutil.relativedelta import relativedelta
 
 
 router = APIRouter(prefix="/wx")
@@ -100,6 +102,7 @@ async def wechat_pay_callback(wechatpay_timestamp: common.HeaderField,
                               wechatpay_signature: common.HeaderField,
                               wx: deps.WxClient,
                               db: deps.Database,
+                              plans: deps.SubscriptionPlan,
                               request: Request) -> Response:
 
     body = await request.body()
@@ -122,6 +125,8 @@ async def wechat_pay_callback(wechatpay_timestamp: common.HeaderField,
     recharage_order = db.exec(select(models.db.Recharge).where(
         models.db.Recharge.tradeid == result.out_trade_no)).one()
 
+    assert result.amount.total == recharage_order.amount
+
     # Update recharge order state.
     recharage_order.transaction_id = result.transaction_id
     recharage_order.success_time = common.parse_datetime(result.success_time)
@@ -132,6 +137,34 @@ async def wechat_pay_callback(wechatpay_timestamp: common.HeaderField,
     else:
         logger.info(f"pay success of trade {result.out_trade_no}")
         recharage_order.pay_state = models.db.PayState.success
+
+        # TODO: update user subscription.
+        subplan: config.SubscriptionPlan | None = None
+        for p in plans:
+            if recharage_order.amount == p.price:
+                subplan = p
+                break
+        assert subplan is not None
+
+        # Expire current subscription.
+        current_sub = db.exec(select(models.db.MagicPointSubscription)
+                              .where(models.db.MagicPointSubscription.uid == recharage_order.uid)
+                              .where(models.db.MagicPointSubscription.expired == False)
+                              .where(models.db.MagicPointSubscription.stype == models.db.SubscriptionType.subscription)
+                              ).one()
+
+        current_sub.expired = True
+
+        # Set new subscription.
+        dt = datetime.now()
+        expires_in = dt.replace(
+            hour=0, minute=0, second=0, microsecond=0) + relativedelta(months=subplan.month)
+        newsub = models.db.MagicPointSubscription(uid=recharage_order.uid, stype=models.db.SubscriptionType.subscription,
+                                                  init=subplan.point_each_day, remains=subplan.point_each_day,
+                                                  ctime=dt, utime=dt, expires_in=expires_in)
+        db.add(newsub)
+        logger.info(
+            f"uid {recharage_order.uid} new subscription, {subplan.price/100} for {subplan.month}, {subplan.point_each_day} each day.")
 
     db.commit()
 
