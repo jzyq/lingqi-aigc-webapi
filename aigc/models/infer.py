@@ -19,12 +19,13 @@ class ReplaceRequest(BaseModel):
     text_prompt: str = ""
 
 
-class ReplaceResponseData(BaseModel):
+class ReplaceResult(BaseModel):
     image: str
-    oss_url: list[str]
 
 
 class ReplaceResponse(BaseModel):
     code: int
     msg: str
-    data: ReplaceResponseData
+    data: list[str] | None = None
+    oss_urls: list[str] | None = None
+    result: ReplaceResult | None = None
