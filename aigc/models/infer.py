@@ -3,8 +3,8 @@ from uuid import uuid4
 
 
 class ReplaceRequest(BaseModel):
-    init_image: str
-    mask_image: str
+    init_image: str | None = None
+    mask_image: str | None = None
     reference_image: str | None = Field(
         default=None, serialization_alias="userdefined")
     tops: bool = False
