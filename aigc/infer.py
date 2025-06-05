@@ -24,9 +24,12 @@ def replace_with_reference(req: models.infer.ReplaceRequest, ses: deps.UserSessi
                          json=req.model_dump(by_alias=True))
 
     if resp.status_code == 200:
-        subscription.remains -= 1
-        subscription.utime = datetime.now()
-        db.commit()
-        return models.infer.ReplaceResponse.model_validate_json(resp.content)
+        infer_data = models.infer.ReplaceResponse.model_validate_json(
+            resp.content)
+        if infer_data.code == 0:
+            subscription.remains -= 1
+            subscription.utime = datetime.now()
+            db.commit()
+        return infer_data
 
     raise Exception(resp.content.decode())
