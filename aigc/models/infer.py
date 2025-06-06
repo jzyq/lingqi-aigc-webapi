@@ -5,15 +5,14 @@ from uuid import uuid4
 class ReplaceRequest(BaseModel):
     init_image: str | None = None
     mask_image: str | None = None
-    reference_image: str | None = Field(
-        default=None, serialization_alias="userdefined")
-    tops: bool = False
-    bottoms: bool = False
-    whole: bool = False
+    reference_image: str | None = None
+    reference_mask_image: str | None = None
     user_id: str = Field(default_factory=lambda: str(uuid4()))
     creation_id: str = Field(default_factory=lambda: str(uuid4()))
     create_style_id: str = Field(default_factory=lambda: str(uuid4()))
     is_callback: bool = False
+    callback_url: str | None = None
+    return_base64: bool = True
     num_frames: int = 2
     num_steps: int = 2
     text_prompt: str = ""

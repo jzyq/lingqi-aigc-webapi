@@ -5,3 +5,4 @@ __pycache__
 *.pem
 TODO.txt
 .sync.ffs_db
+.dev

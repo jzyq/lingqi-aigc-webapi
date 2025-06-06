@@ -5,9 +5,12 @@ import redis.asyncio as redis
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from sqlmodel import Session
+from loguru import logger
 
 
 def main() -> None:
+    logger.add("api.log", rotation="100 MB")
+
     # Load default config, default can overwrite by env variables.
     default_config = config.Config()
 
