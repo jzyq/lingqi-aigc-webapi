@@ -17,6 +17,7 @@ def refresh_subscriptions(db: Session, dt: datetime):
         models.db.MagicPointSubscription.stype == models.db.SubscriptionType.subscription and
         models.db.MagicPointSubscription.expired == False)).all()
 
+    # FIXME: it will refresh multi time because it will call up in a seconds.
     # Refresh subscriptions, if exipre, set state.
     for s in subscriptions:
         s.utime = dt

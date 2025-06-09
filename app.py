@@ -66,7 +66,7 @@ def main() -> None:
     app.include_router(router)
 
     try:
-        uvicorn.run(app, host=arguments.host, port=arguments.port)
+        uvicorn.run(app, host=arguments.host, port=arguments.port, timeout_keep_alive=300)
     except KeyboardInterrupt:
         pass
 
