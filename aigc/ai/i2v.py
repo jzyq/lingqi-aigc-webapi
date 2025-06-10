@@ -1,0 +1,64 @@
+from pydantic import BaseModel, Field
+import asyncio
+import secrets
+import requests
+from .err import *
+
+# The length represent how many bytes when generate token
+# Covert to hex str will double the length.
+CREATION_TOKEN_LEN = 8
+
+I2V_URL = "https://115c-116-172-93-214.ngrok-free.app/wan_video_i2v_accelerate"
+
+
+class GenReq(BaseModel):
+    image_url: str = Field(serialization_alias="init_image")
+    prompt:  str = Field(serialization_alias="text_prompt")
+    user_id: str
+    creation_id: str = Field(
+        default_factory=lambda: secrets.token_hex(CREATION_TOKEN_LEN))
+
+
+class Result(BaseModel):
+    cost_time: str
+    create_style_id: str
+    creation_id: str
+    data: str
+    message: str
+    text_prompt: str
+    user_id: str
+    video: str
+    video_image: str
+
+
+class GenResp(BaseModel):
+    code: int
+    msg: str
+    cost_time: str
+    data: list[str]
+    result: Result
+
+
+async def generate(uid: int, image_url: str, prompt: str, timeout_s: int) -> GenResp:
+    req = GenReq(image_url=image_url, prompt=prompt, user_id=str(uid))
+    json_data = req.model_dump(by_alias=True, exclude_none=True)
+    task = asyncio.to_thread(requests.post, url=I2V_URL, json=json_data)
+
+    try:
+        resp = await asyncio.wait_for(task, timeout=timeout_s)
+        if resp.status_code != 200:
+            raise ServerError("infer server unavilable.")
+
+        body = resp.json()
+        if "error" in body:
+            raise GenerateError(body["error"])
+
+        resp = GenResp.model_validate(body)
+        return resp
+
+    except TimeoutError:
+        raise GenerateError("generate timeout.")
+
+@staticmethod
+async def async_generate(image_url: str, prompt: str, callback_url: str) -> None:
+    pass

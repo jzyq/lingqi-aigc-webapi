@@ -1,6 +1,6 @@
 .venv
 secrets
-__pycache__
+*__pycache__*
 *.db
 *.pem
 TODO.txt

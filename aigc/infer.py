@@ -1,11 +1,13 @@
-from pyexpat import model
-import requests
-from fastapi import APIRouter, Request, Response
-from . import models, deps
-from sqlmodel import select
 from datetime import datetime
-from loguru import logger
 
+import requests
+from fastapi import APIRouter
+from loguru import logger
+from sqlmodel import select
+
+from . import ai, deps
+from .models import db as db_models
+from .models import infer
 
 BASE_URL = "http://zdxai.iepose.cn"
 REPLACE_WITH_ANY = BASE_URL + "/replace_with_any"
@@ -15,16 +17,16 @@ IMAGE_TO_VIDEO = "https://115c-116-172-93-214.ngrok-free.app/wan_video_i2v_accel
 router = APIRouter(prefix="/infer")
 
 
-@router.post("/image",  response_model=models.infer.ReplaceResponse, response_model_exclude_none=True)
-def replace_with_reference(req: models.infer.ReplaceRequest, ses: deps.UserSession, db: deps.Database) -> models.infer.ReplaceResponse:
+@router.post("/image",  response_model=infer.ReplaceResponse, response_model_exclude_none=True)
+def replace_with_reference(req: infer.ReplaceRequest, ses: deps.UserSession, db: deps.Database) -> infer.ReplaceResponse:
     # read user data check if have magic point.
-    subscription = db.exec(select(models.db.MagicPointSubscription).where(
-        models.db.MagicPointSubscription.uid == ses.uid).where(models.db.MagicPointSubscription.expired != True)).one()
+    subscription = db.exec(select(db_models.MagicPointSubscription).where(
+        db_models.MagicPointSubscription.uid == ses.uid).where(db_models.MagicPointSubscription.expired != True)).one()
 
     if subscription.remains == 0:
         logger.info(
             f"user {ses.nickname}(uid {ses.uid}) try infer but no enough magic point.")
-        return models.infer.ReplaceResponse(code=1, msg="no more magic points today.")
+        return infer.ReplaceResponse(code=1, msg="no more magic points today.")
 
     resp = requests.post(REPLACE_WITH_ANY,
                          json=req.model_dump(by_alias=True))
@@ -32,15 +34,15 @@ def replace_with_reference(req: models.infer.ReplaceRequest, ses: deps.UserSessi
     if resp.status_code != 200:
         logger.error(
             f"infer server response status code {resp.status_code}, detail: {resp.text}")
-        return models.infer.ReplaceResponse(code=2, msg="infer server unavailable.")
+        return infer.ReplaceResponse(code=2, msg="infer server unavailable.")
 
     if resp.headers['content-type'] != 'application/json':
         logger.error(
             f"expect infer result to be a json but actual is {resp.headers['content-type']}")
         logger.error(f"resp: {resp.text}")
-        return models.infer.ReplaceResponse(code=3, msg="response data not json")
+        return infer.ReplaceResponse(code=3, msg="response data not json")
 
-    infer_data = models.infer.ReplaceResponse.model_validate_json(
+    infer_data = infer.ReplaceResponse.model_validate_json(
         resp.content)
     logger.debug("infer success complete.")
 
@@ -53,37 +55,32 @@ def replace_with_reference(req: models.infer.ReplaceRequest, ses: deps.UserSessi
     return infer_data
 
 
-@router.post("/image2video", response_model=models.infer.Image2VideoResponse, response_model_exclude_none=True)
-def make_i2v_process(req: models.infer.Image2VideoRequest, ses: deps.UserSession, db: deps.Database) -> models.infer.Image2VideoResponse:
+@router.post("/image2video", response_model=infer.i2v.Response, response_model_exclude_none=True)
+async def make_i2v_process(req: infer.i2v.Request, ses: deps.UserSession, db: deps.Database) -> infer.i2v.Response:
 
     logger.info(f"user {ses.nickname} (uid {ses.uid}) call image to video")
-    subscription = db.exec(select(models.db.MagicPointSubscription).where(
-        models.db.MagicPointSubscription.uid == ses.uid).where(models.db.MagicPointSubscription.expired != True)).one()
+    subscription = db.exec(select(db_models.MagicPointSubscription).where(
+        db_models.MagicPointSubscription.uid == ses.uid).where(db_models.MagicPointSubscription.expired != True)).one()
     if subscription.remains == 0:
         logger.info(
             f"user {ses.nickname}(uid {ses.uid}) try image to video but no enough magic point.")
-        return models.infer.Image2VideoResponse(code=1, msg="no more magic points today.")
+        return infer.i2v.Response(code=1, msg="no more magic points today.")
 
-    resp = requests.post(IMAGE_TO_VIDEO, json=req.model_dump())
-    logger.debug("infer server response")
+    try:
+        result = await ai.i2v.generate(ses.uid, req.init_image, req.text_prompt, 300)
+        logger.debug("generate complete")
 
-    if resp.status_code != 200:
-        logger.error(f"infer server respose error, code {resp.status_code}")
-        return models.infer.Image2VideoResponse(code=2, msg="infer server error")
-
-    body = resp.json()
-    if "error" in body:
-        res = models.infer.Image2VideoResponse(code=3, msg=body["error"])
-        logger.warning(f"gen image error, res: {res.msg}")
-        return res
-
-    else:
-        res = models.infer.Image2VideoResponse.model_validate(body)
-        if res.code == 0:
+        if result.code == 0:
             subscription.remains -= 1
             subscription.utime = datetime.now()
             db.commit()
             logger.info(
                 f"reduce user {ses.nickname} (uid: {ses.uid}) magic point.")
 
-        return res
+        response = infer.i2v.Response(
+            code=result.code, msg=result.msg, data=result.data)
+        return response
+
+    except (ai.GenerateError, ai.ServerError) as e:
+        logger.error(f"generate video error, {str(e)}")
+        return infer.i2v.Response(code=2, msg=str(e))

@@ -30,30 +30,13 @@ class ReplaceResponse(BaseModel):
     result: ReplaceResult | None = None
 
 
-class Image2VideoRequest(BaseModel):
-    init_image: str | None = None
-    user_id: str = Field(default_factory=lambda: str(uuid4()))
-    creation_id: str = Field(default_factory=lambda: str(uuid4()))
-    create_style_id: str = Field(default_factory=lambda: str(uuid4()))
-    is_callback: bool = False
-    text_prompt: str = ""
+class i2v:
 
+    class Request(BaseModel):
+        init_image: str
+        text_prompt: str
 
-class Image2VideoResult(BaseModel):
-    cost_time: str
-    create_style_id: str
-    creation_id: str
-    data: str
-    message: str
-    text_prompt: str
-    user_id: str
-    video: str
-    video_image: str
-
-
-class Image2VideoResponse(BaseModel):
-    code: int
-    msg: str
-    cost_time: str | None = None
-    data: list[str] | None = None
-    result: Image2VideoResult | None = None
+    class Response(BaseModel):
+        code: int
+        msg: str
+        data: list[str] | None = None
