@@ -1,6 +1,8 @@
-from pydantic import BaseModel, Field
 import asyncio
 import secrets
+
+from pydantic import BaseModel, Field
+
 from .err import *
 import httpx
 
@@ -59,6 +61,7 @@ async def generate(uid: int, image_url: str, prompt: str, timeout_s: int) -> Gen
 
     except TimeoutError:
         raise GenerateError("generate timeout.")
+
 
 @staticmethod
 async def async_generate(image_url: str, prompt: str, callback_url: str) -> None:
