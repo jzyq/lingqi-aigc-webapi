@@ -6,3 +6,5 @@ secrets
 TODO.txt
 .sync.ffs_db
 .dev
+*.ffs_gui
+*.ffs_db

@@ -1,4 +1,3 @@
-from calendar import month
 from fastapi import APIRouter, Request, HTTPException, Response
 from sqlmodel import select
 from fastapi.responses import RedirectResponse

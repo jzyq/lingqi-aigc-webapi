@@ -50,7 +50,7 @@ async def refresh_forever(db: Session, delay_s: int):
         return
 
 
-def arrage_refresh_subscriptions(db: Session) -> asyncio.Task:
+def arrage_refresh_subscriptions(db: Session) -> asyncio.Task[None]:
 
     now = datetime.now()
     this_middle_night = now.replace(hour=0, minute=0, second=0, microsecond=0)

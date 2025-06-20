@@ -8,4 +8,5 @@ class GetUserInfoResponse(BaseModel):
     nickname: str
     avatar: str
     point: int
+    is_member: bool
     expires_in: datetime | None

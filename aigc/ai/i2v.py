@@ -1,8 +1,8 @@
 from pydantic import BaseModel, Field
 import asyncio
 import secrets
-import requests
 from .err import *
+import httpx
 
 # The length represent how many bytes when generate token
 # Covert to hex str will double the length.
@@ -42,7 +42,8 @@ class GenResp(BaseModel):
 async def generate(uid: int, image_url: str, prompt: str, timeout_s: int) -> GenResp:
     req = GenReq(image_url=image_url, prompt=prompt, user_id=str(uid))
     json_data = req.model_dump(by_alias=True, exclude_none=True)
-    task = asyncio.to_thread(requests.post, url=I2V_URL, json=json_data)
+    async with httpx.AsyncClient() as client:
+        task = client.post(url=I2V_URL, json=json_data)
 
     try:
         resp = await asyncio.wait_for(task, timeout=timeout_s)
