@@ -36,7 +36,7 @@ async def replace_with_reference(
         )
         return infer.ReplaceResponse(code=1, msg="no more magic points today.")
 
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=None) as client:
         resp = await client.post(REPLACE_WITH_ANY, json=req.model_dump(by_alias=True))
 
     if resp.status_code != 200:
@@ -122,7 +122,7 @@ async def segment_any(
         )
         return infer.segment.Response(code=1, msg="no more magic points today.")
 
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=None) as client:
         resp = await client.post(SEGMENT_URL, json=req.model_dump())
         try:
             result = infer.segment.Response.model_validate(
