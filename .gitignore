@@ -8,3 +8,4 @@ TODO.txt
 .dev
 *.ffs_gui
 *.ffs_db
+.*

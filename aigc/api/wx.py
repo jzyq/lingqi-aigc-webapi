@@ -2,7 +2,7 @@ from fastapi import APIRouter, Request, HTTPException, Response
 from sqlmodel import select
 from fastapi.responses import RedirectResponse
 
-from . import deps, sessions, models, config, wx as wechat, common
+from .. import deps, sessions, models, config, wx as wechat, common
 import json
 from loguru import logger
 from datetime import datetime

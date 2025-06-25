@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException
-from . import deps, wx, models, config, common
+from .. import deps, wx, models, config, common
 from loguru import logger
 from datetime import datetime, timedelta
 from sqlmodel import select
