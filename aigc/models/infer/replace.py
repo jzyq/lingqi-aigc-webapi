@@ -1,5 +1,6 @@
 from pydantic import BaseModel, Field
 from uuid import uuid4
+from async_task_manager import TaskState
 
 
 class Request(BaseModel):
@@ -28,3 +29,12 @@ class Response(BaseModel):
     data: list[str] | None = None
     oss_urls: list[str] | None = None
     result: Result | None = None
+
+
+class TaskCreateResponse(BaseModel):
+    task_id: str
+
+
+class TaskStateResponse(BaseModel):
+    task_id: str
+    state: TaskState

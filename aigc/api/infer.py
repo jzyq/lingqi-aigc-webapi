@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from loguru import logger
 from sqlmodel import select
 
@@ -9,6 +9,8 @@ from ..models import db as db_models
 from ..models.infer import i2v as i2v_models
 from ..models.infer import replace as replace_models
 from ..models.infer import segment as segment_models
+import secrets
+from http import HTTPStatus
 
 BASE_URL = "http://zdxai.iepose.cn"
 REPLACE_WITH_ANY = BASE_URL + "/replace_with_any"
@@ -37,7 +39,7 @@ async def replace_with_reference(
         )
         return replace_models.Response(code=1, msg="no more magic points today.")
 
-    resp = await ai.image.replace_with_any(REPLACE_WITH_ANY, req)
+    resp = await ai.image.replace_with_any(REPLACE_WITH_ANY, ses.uid, secrets.token_hex(8), req)
 
     if resp.code == 0:
         subscription.remains -= 10
@@ -45,6 +47,27 @@ async def replace_with_reference(
         db.commit()
         logger.info(
             f"reduce user {ses.nickname} (uid: {ses.uid}) magic point.")
+    return resp
+
+
+@router.post("/image/async")
+async def replace_with_reference_async(req: replace_models.Request, ses: deps.UserSession, tasks: deps.ReplaceTasks) -> replace_models.TaskCreateResponse:
+    tid = await tasks.new_request(ses.uid, req)
+    return replace_models.TaskCreateResponse(task_id=tid)
+
+
+@router.get("/image/{task_id}/state")
+async def query_replace_task_state(task_id: str, ses: deps.UserSession, tasks: deps.ReplaceTasks) -> replace_models.TaskStateResponse:
+    try:
+        state = await tasks.queue_state(task_id)
+        return replace_models.TaskStateResponse(task_id=task_id, state=state)
+    except KeyError:
+        raise HTTPException(HTTPStatus.BAD_REQUEST.value,
+                            detail="no such task.")
+    
+@router.get("/image/{task_id}/result")
+async def get_replace_task_result(task_id: str, ses: deps.UserSession, tasks: deps.ReplaceTasks) -> replace_models.Response:
+    resp = await tasks.wait_result(task_id)
     return resp
 
 

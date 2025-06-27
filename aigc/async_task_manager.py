@@ -14,7 +14,8 @@ RespT = TypeVar("RespT", replace.Response, i2v.Response, segment.Response)
 InferProxy: TypeAlias = Callable[[int, str, ReqT], Awaitable[RespT]]
 
 
-class TaskStage(StrEnum):
+
+class TaskState(StrEnum):
     waiting = "waiting"
     infer = "infer"
     down = "down"
@@ -25,7 +26,7 @@ class TaskStage(StrEnum):
 class AsyncInferTask(Generic[ReqT, RespT]):
     uid: int
     tid: str
-    stage: TaskStage = field(default=TaskStage.waiting, init=False)
+    state: TaskState = field(default=TaskState.waiting, init=False)
 
     request: ReqT
     response: RespT | None = field(default=None, init=False)
@@ -62,11 +63,11 @@ class AsyncTaskManager(Generic[ReqT, RespT]):
             tid = await self.waiting.get()
             next_task = self.tasks[tid]
 
-            if next_task.stage == TaskStage.canceled:
+            if next_task.state == TaskState.canceled:
                 self.waiting.task_done()
                 self.cond.notify_all()
 
-            next_task.stage = TaskStage.infer
+            next_task.state = TaskState.infer
             handler = asyncio.create_task(self.handler(next_task))
             self.backgrounds.add(handler)
             handler.add_done_callback(self.backgrounds.discard)
@@ -85,14 +86,14 @@ class AsyncTaskManager(Generic[ReqT, RespT]):
 
         async with self.cond:
             task.response = resp
-            task.stage = TaskStage.down
+            task.state = TaskState.down
             self.cond.notify_all()
 
-    async def queue_state(self, tid: str) -> TaskStage:
+    async def queue_state(self, tid: str) -> TaskState:
         async with self.cond:
             if tid not in self.tasks:
                 raise KeyError("no such task")
-            return self.tasks[tid].stage
+            return self.tasks[tid].state
 
     async def wait_result(self, tid: str) -> RespT:
         async with self.cond:

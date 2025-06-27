@@ -4,9 +4,12 @@ from sqlmodel import Session
 from .wx import secret, client
 from sqlalchemy import Engine
 import redis.asyncio as redis
-from . import common, sessions, config
+from . import common, sessions, config, ai
 import csv
 from loguru import logger
+from .async_task_manager import AsyncTaskManager
+from functools import cache
+from .models.infer import replace
 
 
 def set_db_session_deps(app: FastAPI, engine: Engine):
@@ -89,3 +92,17 @@ async def get_user_session(rdb: Rdb, token: AuthToken) -> sessions.Session:
     return ses
 
 UserSession = Annotated[sessions.Session, Depends(get_user_session)]
+
+
+# For infer replace with any async task manager.
+@cache
+def get_replace_async_task_manager() -> AsyncTaskManager[replace.Request, replace.Response]:
+    async def proxy(uid: int, tid: str, req: replace.Request) -> replace.Response:
+        return await ai.image.replace_with_any("", uid, tid, req)
+
+    mgr = AsyncTaskManager[replace.Request, replace.Response](1, proxy)
+    return mgr
+
+
+ReplaceTasks = Annotated[AsyncTaskManager[replace.Request, replace.Response],
+                         (get_replace_async_task_manager)]

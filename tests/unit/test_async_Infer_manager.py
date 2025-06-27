@@ -1,6 +1,6 @@
 import asyncio
 from unittest import mock, IsolatedAsyncioTestCase
-from aigc.async_task_manager import AsyncTaskManager, TaskStage
+from aigc.async_task_manager import AsyncTaskManager, TaskState
 from aigc.models.infer import replace
 
 
@@ -42,7 +42,7 @@ class TestAsyncInferManager(IsolatedAsyncioTestCase):
         await asyncio.sleep(0)
         state = await mgr.queue_state(tid)
 
-        self.assertEqual(state, TaskStage.infer)
+        self.assertEqual(state, TaskState.infer)
 
     async def test_wait_result(self) -> None:
         fake_req = replace.Request()

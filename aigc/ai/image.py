@@ -3,7 +3,10 @@ from ..models.infer.replace import Request, Response
 from loguru import logger
 
 
-async def replace_with_any(url: str, req: Request) -> Response:
+async def replace_with_any(url: str, uid: int, cid: str, req: Request) -> Response:
+    req.user_id = str(uid)
+    req.creation_id = cid
+
     async with httpx.AsyncClient(timeout=None) as client:
         resp = await client.post(url, json=req.model_dump(by_alias=True))
 
