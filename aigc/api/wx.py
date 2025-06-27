@@ -19,7 +19,8 @@ async def wechat_login_callback(
         state: str,
         db: deps.Database,
         rdb: deps.Rdb,
-        wx: deps.WxClient):
+        wx: deps.WxClient,
+        conf: deps.Config):
 
     # Fetch use info
     logger.info("wx login callback.")
@@ -81,7 +82,7 @@ async def wechat_login_callback(
 
         # Give a init point subscription.
         dt = datetime.now()
-        init_point = conf.free_subscription_magic_point
+        init_point = conf.magic_points.trail_free_point
         subscription = models.db.MagicPointSubscription(uid=new_user.id, stype=models.db.SubscriptionType.subscription,
                                                         init=init_point, remains=init_point,
                                                         ctime=dt, utime=dt)
@@ -138,7 +139,7 @@ async def wechat_pay_callback(wechatpay_timestamp: common.HeaderField,
         recharage_order.pay_state = models.db.PayState.success
 
         # TODO: update user subscription.
-        subplan: config.SubscriptionPlan | None = None
+        subplan: config.MagicPointSubscription | None = None
         for p in plans:
             if recharage_order.amount == p.price:
                 subplan = p
@@ -159,11 +160,11 @@ async def wechat_pay_callback(wechatpay_timestamp: common.HeaderField,
         expires_in = dt.replace(
             hour=0, minute=0, second=0, microsecond=0) + relativedelta(months=subplan.month)
         newsub = models.db.MagicPointSubscription(uid=recharage_order.uid, stype=models.db.SubscriptionType.subscription,
-                                                  init=subplan.point_each_day, remains=subplan.point_each_day,
+                                                  init=subplan.points, remains=subplan.points,
                                                   ctime=dt, utime=dt, expires_in=expires_in)
         db.add(newsub)
         logger.info(
-            f"uid {recharage_order.uid} new subscription, {subplan.price/100} for {subplan.month}, {subplan.point_each_day} each day.")
+            f"uid {recharage_order.uid} new subscription, {subplan.price/100} for {subplan.month}, {subplan.points} each day.")
 
     db.commit()
 
@@ -172,4 +173,4 @@ async def wechat_pay_callback(wechatpay_timestamp: common.HeaderField,
 
 @router.get("/qrlogin")
 async def qrcode_login(wx: deps.WxClient):
-    return RedirectResponse(url=wx.get_qrcode_login_url(conf.wx_qrcode_login_redirect_url, ""))
+    return RedirectResponse(url=wx.get_qrcode_login_url(conf.wechat.login_redirect, ""))
