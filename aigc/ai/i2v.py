@@ -10,8 +10,6 @@ import httpx
 # Covert to hex str will double the length.
 CREATION_TOKEN_LEN = 8
 
-I2V_URL = "https://115c-116-172-93-214.ngrok-free.app/wan_video_i2v_accelerate"
-
 
 class GenReq(BaseModel):
     image_url: str = Field(serialization_alias="init_image")
@@ -41,11 +39,11 @@ class GenResp(BaseModel):
     result: Result
 
 
-async def generate(uid: int, image_url: str, prompt: str, timeout_s: int) -> GenResp:
+async def generate(url: str, uid: int, image_url: str, prompt: str, timeout_s: int) -> GenResp:
     req = GenReq(image_url=image_url, prompt=prompt, user_id=str(uid))
     json_data = req.model_dump(by_alias=True, exclude_none=True)
     async with httpx.AsyncClient() as client:
-        task = client.post(url=I2V_URL, json=json_data)
+        task = client.post(url=url, json=json_data)
 
     try:
         resp = await asyncio.wait_for(task, timeout=timeout_s)

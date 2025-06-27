@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field
 from uuid import uuid4
-from async_task_manager import TaskState
+from .common import TaskState
 
 
 class Request(BaseModel):

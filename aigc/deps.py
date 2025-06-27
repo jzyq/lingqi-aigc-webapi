@@ -1,23 +1,24 @@
-from typing import Annotated, Generator, Callable
+from typing import Annotated, Generator
 from fastapi import Depends, Request, FastAPI, HTTPException
 from sqlmodel import Session
 from .wx import secret, client
 from sqlalchemy import Engine
 import redis.asyncio as redis
 from . import common, sessions, config, ai
-import csv
-from loguru import logger
+
 from .async_task_manager import AsyncTaskManager
 from functools import cache
 from .models.infer import replace
+from .config import WechatSecretConfig
 
 
 def set_db_session_deps(app: FastAPI, engine: Engine):
     app.state.engine = engine
 
 
-def set_wx_client_deps(app: FastAPI, secret: secret.WxSecrets):
-    wx_client = client.new_client(secerts=secret)
+def set_wx_client_deps(app: FastAPI, conf: WechatSecretConfig):
+    s = secret.must_load_secert(conf)
+    wx_client = client.new_client(secerts=s)
     app.state.wx_client = wx_client
 
 
@@ -41,35 +42,13 @@ def get_rdb(req: Request) -> redis.Redis:
 def get_auth_token(authorization: common.HeaderField) -> str:
     auth_type, token = authorization.split(" ")
     if auth_type != "bearer" or token == "":
-        raise HTTPException(
-            status_code=401, detail="no valid authorization to access.")
+        raise HTTPException(status_code=401, detail="no valid authorization to access.")
     return token
 
 
-def get_subscriptions_plan() -> Callable[[], list[config.SubscriptionPlan]]:
-    conf = config.Config()
-    subscriptions: list[config.SubscriptionPlan] = []
-
-    # Read subscription plan config file.
-    with open(conf.subscriptions_plan_file, 'r') as fp:
-        plans = csv.reader(fp)
-        for (price_str, month_str, point_each_day) in plans:
-            try:
-                subplan = config.SubscriptionPlan(
-                    price=int(price_str), month=int(month_str), point_each_day=int(point_each_day))
-                subscriptions.append(subplan)
-            except ValueError:
-                continue
-
-    logger.info(
-        f"load subscription plans, {len(subscriptions)} subscription plans:")
-    for plan in subscriptions:
-        logger.info(
-            f"{plan.price / 100} CNY for {plan.month} month, {plan.point_each_day} points each day.")
-
-    def getter() -> list[config.SubscriptionPlan]:
-        return subscriptions
-    return getter
+def get_subscriptions_plan() -> list[config.MagicPointSubscription]:
+    conf = config.MagicPointConfig()
+    return conf.subscriptions
 
 
 Database = Annotated[Session, Depends(get_session)]
@@ -80,23 +59,26 @@ Rdb = Annotated[redis.Redis, Depends(get_rdb)]
 
 AuthToken = Annotated[str, Depends(get_auth_token)]
 
-SubscriptionPlan = Annotated[list[config.SubscriptionPlan], Depends(
-    get_subscriptions_plan())]
+SubscriptionPlan = Annotated[
+    list[config.MagicPointSubscription], Depends(get_subscriptions_plan)
+]
 
 
 async def get_user_session(rdb: Rdb, token: AuthToken) -> sessions.Session:
     ses = await sessions.get_session_or_none(rdb, token)
     if ses is None:
-        raise HTTPException(
-            status_code=401, detail="no valid authorization to access.")
+        raise HTTPException(status_code=401, detail="no valid authorization to access.")
     return ses
+
 
 UserSession = Annotated[sessions.Session, Depends(get_user_session)]
 
 
 # For infer replace with any async task manager.
 @cache
-def get_replace_async_task_manager() -> AsyncTaskManager[replace.Request, replace.Response]:
+def get_replace_async_task_manager() -> (
+    AsyncTaskManager[replace.Request, replace.Response]
+):
     async def proxy(uid: int, tid: str, req: replace.Request) -> replace.Response:
         return await ai.image.replace_with_any("", uid, tid, req)
 
@@ -104,5 +86,9 @@ def get_replace_async_task_manager() -> AsyncTaskManager[replace.Request, replac
     return mgr
 
 
-ReplaceTasks = Annotated[AsyncTaskManager[replace.Request, replace.Response],
-                         (get_replace_async_task_manager)]
+ReplaceTasks = Annotated[
+    AsyncTaskManager[replace.Request, replace.Response],
+    Depends(get_replace_async_task_manager),
+]
+
+Config = Annotated[config.Config, Depends(config.Config)]

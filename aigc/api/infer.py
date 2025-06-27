@@ -12,11 +12,6 @@ from ..models.infer import segment as segment_models
 import secrets
 from http import HTTPStatus
 
-BASE_URL = "http://zdxai.iepose.cn"
-REPLACE_WITH_ANY = BASE_URL + "/replace_with_any"
-IMAGE_TO_VIDEO = "https://115c-116-172-93-214.ngrok-free.app/wan_video_i2v_accelerate"
-SEGMENT_URL = "http://zdxai.iepose.cn/segment_any"
-
 router = APIRouter(prefix="/infer")
 
 
@@ -24,7 +19,10 @@ router = APIRouter(prefix="/infer")
     "/image", response_model=replace_models.Response, response_model_exclude_none=True
 )
 async def replace_with_reference(
-    req: replace_models.Request, ses: deps.UserSession, db: deps.Database
+    req: replace_models.Request,
+    ses: deps.UserSession,
+    db: deps.Database,
+    conf: deps.Config,
 ) -> replace_models.Response:
     # read user data check if have magic point.
     subscription = db.exec(
@@ -39,34 +37,40 @@ async def replace_with_reference(
         )
         return replace_models.Response(code=1, msg="no more magic points today.")
 
-    resp = await ai.image.replace_with_any(REPLACE_WITH_ANY, ses.uid, secrets.token_hex(8), req)
+    url = conf.infer.base + conf.infer.replace_any
+    resp = await ai.image.replace_with_any(url, ses.uid, secrets.token_hex(8), req)
 
     if resp.code == 0:
         subscription.remains -= 10
         subscription.utime = datetime.now()
         db.commit()
-        logger.info(
-            f"reduce user {ses.nickname} (uid: {ses.uid}) magic point.")
+        logger.info(f"reduce user {ses.nickname} (uid: {ses.uid}) magic point.")
     return resp
 
 
 @router.post("/image/async")
-async def replace_with_reference_async(req: replace_models.Request, ses: deps.UserSession, tasks: deps.ReplaceTasks) -> replace_models.TaskCreateResponse:
+async def replace_with_reference_async(
+    req: replace_models.Request, ses: deps.UserSession, tasks: deps.ReplaceTasks
+) -> replace_models.TaskCreateResponse:
     tid = await tasks.new_request(ses.uid, req)
     return replace_models.TaskCreateResponse(task_id=tid)
 
 
 @router.get("/image/{task_id}/state")
-async def query_replace_task_state(task_id: str, ses: deps.UserSession, tasks: deps.ReplaceTasks) -> replace_models.TaskStateResponse:
+async def query_replace_task_state(
+    task_id: str, ses: deps.UserSession, tasks: deps.ReplaceTasks
+) -> replace_models.TaskStateResponse:
     try:
         state = await tasks.queue_state(task_id)
         return replace_models.TaskStateResponse(task_id=task_id, state=state)
     except KeyError:
-        raise HTTPException(HTTPStatus.BAD_REQUEST.value,
-                            detail="no such task.")
-    
+        raise HTTPException(HTTPStatus.BAD_REQUEST.value, detail="no such task.")
+
+
 @router.get("/image/{task_id}/result")
-async def get_replace_task_result(task_id: str, ses: deps.UserSession, tasks: deps.ReplaceTasks) -> replace_models.Response:
+async def get_replace_task_result(
+    task_id: str, ses: deps.UserSession, tasks: deps.ReplaceTasks
+) -> replace_models.Response:
     resp = await tasks.wait_result(task_id)
     return resp
 
@@ -75,7 +79,7 @@ async def get_replace_task_result(task_id: str, ses: deps.UserSession, tasks: de
     "/image2video", response_model=i2v_models.Response, response_model_exclude_none=True
 )
 async def make_i2v_process(
-    req: i2v_models.Request, ses: deps.UserSession, db: deps.Database
+    req: i2v_models.Request, ses: deps.UserSession, db: deps.Database, conf: deps.Config
 ) -> i2v_models.Response:
 
     logger.info(f"user {ses.nickname} (uid {ses.uid}) call image to video")
@@ -91,15 +95,17 @@ async def make_i2v_process(
         return i2v_models.Response(code=1, msg="no more magic points today.")
 
     try:
-        result = await ai.i2v.generate(ses.uid, req.init_image, req.text_prompt, 300)
+        url = conf.infer.base + conf.infer.image_to_video
+        result = await ai.i2v.generate(
+            url, ses.uid, req.init_image, req.text_prompt, 300
+        )
         logger.debug("generate complete")
 
         if result.code == 0:
             subscription.remains -= 10
             subscription.utime = datetime.now()
             db.commit()
-            logger.info(
-                f"reduce user {ses.nickname} (uid: {ses.uid}) magic point.")
+            logger.info(f"reduce user {ses.nickname} (uid: {ses.uid}) magic point.")
 
         response = i2v_models.Response(
             code=result.code, msg=result.msg, data=result.data
@@ -117,7 +123,10 @@ async def make_i2v_process(
     response_model_exclude_none=True,
 )
 async def segment_any(
-    req: segment_models.Request, ses: deps.UserSession, db: deps.Database
+    req: segment_models.Request,
+    ses: deps.UserSession,
+    db: deps.Database,
+    conf: deps.Config,
 ) -> segment_models.Response:
     logger.info(f"user {ses.nickname} call segment api.")
     subscription = db.exec(
@@ -132,11 +141,11 @@ async def segment_any(
         )
         return segment_models.Response(code=1, msg="no more magic points today.")
 
-    resp = await ai.segment.segment(SEGMENT_URL, req)
+    url = conf.infer.base + conf.infer.segment_any
+    resp = await ai.segment.segment(url, req)
     if resp.code == 0:
         subscription.remains -= 1
         subscription.utime = datetime.now()
-        logger.info(
-            f"reduce user {ses.nickname} uid {ses.uid} magic point.")
+        logger.info(f"reduce user {ses.nickname} uid {ses.uid} magic point.")
         db.commit()
     return resp

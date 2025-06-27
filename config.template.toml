@@ -1,0 +1,46 @@
+[web]
+host = "0.0.0.0"
+port = 8090
+
+session_ttl = 3600 # Session lifetime in secnods.
+
+[redis]
+host = "127.0.0.1"
+port = 6379
+db = 0
+
+[database]
+file = "database.db"
+
+[wechat]
+logint_redirect = "https://www.lingqi.tech/aigc/api/wx/login/callback"
+payment_callback = "https://www.lingqi.tech/aigc/api/wx/pay/callback"
+payment_expires = 300
+
+[wechat.secrets]
+login_id = ""
+app_id = ""
+app_secret = ""
+mch_id = ""
+mch_cert_serial = ""
+pub_key_id = ""
+api_v3_pwd = ""
+api_client_key_path = ""
+pub_key_path = ""
+
+# Define subscription plans.
+[magic_points]
+trail_free_point = 30 # For trial user, how many point each days.
+
+# List all magic point subscriptions.
+subscriptions = [
+    { price = 9900, month = 1, points = 1000 },
+    { price = 29900, month = 12, points = 1000 },
+]
+
+[infer]
+base = "http://www.lingqi.tech:8991/health"
+
+replace_any = "/replace_with_any"
+segment_any = "/segment_any"
+image_to_video = "/wan_video_i2v_accelerate"

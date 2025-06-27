@@ -1,6 +1,5 @@
 from dataclasses import dataclass, field
-from enum import StrEnum
-from .models.infer import replace, i2v, segment
+from .models.infer import replace, i2v, segment, TaskState
 import asyncio
 import secrets
 
@@ -13,13 +12,6 @@ RespT = TypeVar("RespT", replace.Response, i2v.Response, segment.Response)
 
 InferProxy: TypeAlias = Callable[[int, str, ReqT], Awaitable[RespT]]
 
-
-
-class TaskState(StrEnum):
-    waiting = "waiting"
-    infer = "infer"
-    down = "down"
-    canceled = "canceled"
 
 
 @dataclass
