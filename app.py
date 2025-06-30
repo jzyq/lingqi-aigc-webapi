@@ -13,13 +13,9 @@ from aigc.router import router
 def main() -> None:
     logger.add("api.log", rotation="100 MB")
 
-    
-
     # Parse command line arguments.
     parser = ArgumentParser()
-    parser.add_argument(
-        "--config", help="The config file path.", default="config.toml"
-    )
+    parser.add_argument("--config", help="The config file path.", default="config.toml")
     arguments = parser.parse_args()
 
     # Load default config, default can overwrite by env variables.
@@ -38,7 +34,7 @@ def main() -> None:
             host=conf.redis.host,
             port=conf.redis.port,
             db=conf.redis.db,
-            decode_responses=True
+            decode_responses=True,
         )
         rdb = redis.Redis(connection_pool=conn_pool)
         deps.set_rdb_deps(app, rdb)

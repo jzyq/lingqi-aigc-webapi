@@ -43,6 +43,6 @@ class TestQrLoginAPI(IsolatedAsyncioTestCase):
 
         self.assertIsInstance(resp, RedirectResponse)
 
-        s = MagicPointSubscription(uid=1, stype=SubscriptionType.subscription,
+        s = MagicPointSubscription(uid=1, stype=SubscriptionType.trail,
                                init=100, remains=100, ctime=fakedt, utime=fakedt)
         fakedb.add.assert_called_with(s)

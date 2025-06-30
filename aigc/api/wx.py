@@ -83,7 +83,7 @@ async def wechat_login_callback(
         # Give a init point subscription.
         dt = datetime.now()
         init_point = conf.magic_points.trail_free_point
-        subscription = models.db.MagicPointSubscription(uid=new_user.id, stype=models.db.SubscriptionType.subscription,
+        subscription = models.db.MagicPointSubscription(uid=new_user.id, stype=models.db.SubscriptionType.trail,
                                                         init=init_point, remains=init_point,
                                                         ctime=dt, utime=dt)
         db.add(subscription)

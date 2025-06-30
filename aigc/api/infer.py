@@ -1,16 +1,15 @@
 from datetime import datetime
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from loguru import logger
-from sqlmodel import select
 
 from .. import ai, deps
-from ..models import db as db_models
 from ..models.infer import i2v as i2v_models
 from ..models.infer import replace as replace_models
 from ..models.infer import segment as segment_models
+from ..common import query_valid_subscription
 import secrets
-from http import HTTPStatus
+
 
 router = APIRouter(prefix="/infer")
 
@@ -24,13 +23,8 @@ async def replace_with_reference(
     db: deps.Database,
     conf: deps.Config,
 ) -> replace_models.Response:
-    # read user data check if have magic point.
-    subscription = db.exec(
-        select(db_models.MagicPointSubscription)
-        .where(db_models.MagicPointSubscription.uid == ses.uid)
-        .where(db_models.MagicPointSubscription.expired != True)
-    ).one()
 
+    subscription = await query_valid_subscription(ses.uid, db)
     if subscription.remains == 0:
         logger.info(
             f"user {ses.nickname}(uid {ses.uid}) try infer but no enough magic point."
@@ -48,33 +42,6 @@ async def replace_with_reference(
     return resp
 
 
-@router.post("/image/async")
-async def replace_with_reference_async(
-    req: replace_models.Request, ses: deps.UserSession, tasks: deps.ReplaceTasks
-) -> replace_models.TaskCreateResponse:
-    tid = await tasks.new_request(ses.uid, req)
-    return replace_models.TaskCreateResponse(task_id=tid)
-
-
-@router.get("/image/{task_id}/state")
-async def query_replace_task_state(
-    task_id: str, ses: deps.UserSession, tasks: deps.ReplaceTasks
-) -> replace_models.TaskStateResponse:
-    try:
-        state = await tasks.queue_state(task_id)
-        return replace_models.TaskStateResponse(task_id=task_id, state=state)
-    except KeyError:
-        raise HTTPException(HTTPStatus.BAD_REQUEST.value, detail="no such task.")
-
-
-@router.get("/image/{task_id}/result")
-async def get_replace_task_result(
-    task_id: str, ses: deps.UserSession, tasks: deps.ReplaceTasks
-) -> replace_models.Response:
-    resp = await tasks.wait_result(task_id)
-    return resp
-
-
 @router.post(
     "/image2video", response_model=i2v_models.Response, response_model_exclude_none=True
 )
@@ -83,11 +50,7 @@ async def make_i2v_process(
 ) -> i2v_models.Response:
 
     logger.info(f"user {ses.nickname} (uid {ses.uid}) call image to video")
-    subscription = db.exec(
-        select(db_models.MagicPointSubscription)
-        .where(db_models.MagicPointSubscription.uid == ses.uid)
-        .where(db_models.MagicPointSubscription.expired != True)
-    ).one()
+    subscription = await query_valid_subscription(ses.uid, db)
     if subscription.remains == 0:
         logger.info(
             f"user {ses.nickname}(uid {ses.uid}) try image to video but no enough magic point."
@@ -129,11 +92,7 @@ async def segment_any(
     conf: deps.Config,
 ) -> segment_models.Response:
     logger.info(f"user {ses.nickname} call segment api.")
-    subscription = db.exec(
-        select(db_models.MagicPointSubscription)
-        .where(db_models.MagicPointSubscription.uid == ses.uid)
-        .where(db_models.MagicPointSubscription.expired != True)
-    ).one()
+    subscription = await query_valid_subscription(ses.uid, db)
 
     if subscription.remains == 0:
         logger.info(

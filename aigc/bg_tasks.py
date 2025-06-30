@@ -7,28 +7,32 @@ import asyncio
 
 def delay_to_next_middle_night(now: datetime) -> int:
     next_middlenight = now.replace(
-        hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
+        hour=0, minute=0, second=0, microsecond=0
+    ) + timedelta(days=1)
     delay_s = (next_middlenight - now).seconds
     return delay_s
 
 
 def refresh_subscriptions(db: Session, dt: datetime):
-    subscriptions = db.exec(select(models.db.MagicPointSubscription).where(
-        models.db.MagicPointSubscription.stype == models.db.SubscriptionType.subscription and
-        models.db.MagicPointSubscription.expired == False)).all()
+    subscriptions = db.exec(
+        select(models.db.MagicPointSubscription).where(
+            models.db.MagicPointSubscription.stype
+            == models.db.SubscriptionType.subscription
+            and models.db.MagicPointSubscription.expired == False
+        )
+    ).all()
 
-    # FIXME: it will refresh multi time because it will call up in a seconds.
     # Refresh subscriptions, if exipre, set state.
     for s in subscriptions:
         s.utime = dt
 
         if s.expires_in is not None and dt > s.expires_in:
             s.expired = True
+
         else:
             s.remains = s.init
 
-    log = models.db.SubscriptionsRefreshLog(
-        refresh_time=dt, cnt=len(subscriptions))
+    log = models.db.SubscriptionsRefreshLog(refresh_time=dt, cnt=len(subscriptions))
 
     db.add(log)
     db.commit()
@@ -56,14 +60,19 @@ def arrage_refresh_subscriptions(db: Session) -> asyncio.Task[None]:
     this_middle_night = now.replace(hour=0, minute=0, second=0, microsecond=0)
 
     # Check if already refreshed today.
-    logs = db.exec(select(models.db.SubscriptionsRefreshLog).where(
-        models.db.SubscriptionsRefreshLog.refresh_time >= this_middle_night)).all()
+    logs = db.exec(
+        select(models.db.SubscriptionsRefreshLog).where(
+            models.db.SubscriptionsRefreshLog.refresh_time >= this_middle_night
+        )
+    ).all()
 
     # If no refresh log today, refresh immediate.
     if len(logs) == 0:
         refresh_subscriptions(db, now)
 
     # Arrage next fresh.
-    delay_s = delay_to_next_middle_night(now)
+    # Add a 30 secnods delay to prevent multiple refresh at same time.
+    delay_s = delay_to_next_middle_night(now) + 30
     logger.debug(f"next refresh {delay_s} seconds after.")
-    return asyncio.create_task(refresh_forever(db, delay_to_next_middle_night(now)))
+
+    return asyncio.create_task(refresh_forever(db, delay_s))

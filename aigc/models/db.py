@@ -4,6 +4,7 @@ from datetime import datetime
 
 
 class SubscriptionType(StrEnum):
+    trail = "trail"
     subscription = "subscription"
 
 
