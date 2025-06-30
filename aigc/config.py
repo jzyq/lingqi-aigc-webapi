@@ -3,7 +3,7 @@ from functools import cache
 from dataclasses import dataclass, field
 from typing import Any
 
-_config_file: str = "config.toml"
+_config_file: str = "config.template.toml"
 
 
 @cache
@@ -17,7 +17,7 @@ def setup_config_file(path: str):
     _config_file = path
 
 
-def reload_config():
+def reload_config() -> None:
     _c.cache_clear()
 
 
