@@ -15,6 +15,7 @@ def _c() -> dict[str, Any]:
 def setup_config_file(path: str):
     global _config_file
     _config_file = path
+    reload_config()
 
 
 def reload_config() -> None:
