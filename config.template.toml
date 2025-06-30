@@ -39,7 +39,7 @@ subscriptions = [
 ]
 
 [infer]
-base = "http://www.lingqi.tech:8991/health"
+base = "http://www.lingqi.tech:8991"
 
 replace_any = "/replace_with_any"
 segment_any = "/segment_any"

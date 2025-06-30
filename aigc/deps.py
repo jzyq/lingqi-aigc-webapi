@@ -91,4 +91,7 @@ ReplaceTasks = Annotated[
     Depends(get_replace_async_task_manager),
 ]
 
-Config = Annotated[config.Config, Depends(config.Config)]
+def get_conf() -> config.Config:
+    return config.Config()
+
+Config = Annotated[config.Config, Depends(get_conf)]
