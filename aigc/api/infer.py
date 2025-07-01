@@ -1,110 +1,137 @@
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from datetime import datetime
 
-from fastapi import APIRouter
-from loguru import logger
+import httpx
+from fastapi import FastAPI, Request, Response
+from fastapi.responses import JSONResponse
+from pydantic import ValidationError, BaseModel
+from sqlmodel import Session, select
 
-from .. import ai, deps
-from ..models.infer import i2v as i2v_models
-from ..models.infer import replace as replace_models
-from ..models.infer import segment as segment_models
-from ..common import query_valid_subscription
-import secrets
+from .. import deps
+from ..models.db import MagicPointSubscription, SubscriptionType
 
-
-router = APIRouter(prefix="/infer")
+app = FastAPI(title="Infer App")
 
 
-@router.post(
-    "/image", response_model=replace_models.Response, response_model_exclude_none=True
-)
+class NoPointError(Exception):
+    def __init__(self, uid: int) -> None:
+        self.uid = uid
+
+
+class InferResponse(BaseModel):
+    code: int
+
+
+@asynccontextmanager
+async def query_valid_subscription(uid: int, db: Session) -> AsyncIterator[MagicPointSubscription]:
+    query = (
+        select(MagicPointSubscription)
+        .where(MagicPointSubscription.uid == uid)
+        .where(MagicPointSubscription.expired == False)
+    )
+    subscriptions = db.exec(query).all()
+
+    trail: list[MagicPointSubscription] = []
+    payed: list[MagicPointSubscription] = []
+
+    for s in subscriptions:
+        if s.stype == SubscriptionType.trail:
+            trail.append(s)
+        if s.stype == SubscriptionType.subscription:
+            payed.append(s)
+
+    subscription: MagicPointSubscription | None = None
+    if len(payed) != 0:
+        subscription = payed[0]
+    elif len(trail) != 0:
+        subscription = trail[0]
+    else:
+        raise AssertionError("no valid subscriptions")
+
+    if subscription.remains <= 0:
+        raise NoPointError(uid)
+
+    try:
+        yield subscription
+    finally:
+        db.commit()
+
+
+async def forward_to_infer_srv(url: str, req: Request) -> tuple[int, Response]:
+    async with httpx.AsyncClient(timeout=None) as client:
+        content = await req.body()
+        resp = (await client.post(url, content=content, headers=req.headers)).raise_for_status()
+        infer_resp = InferResponse.model_validate_json(resp.content)
+
+        return infer_resp.code, Response(content=resp.content, headers=resp.headers)
+
+
+# HTTPStatusError will raise when forward to infer srver.
+@app.exception_handler(httpx.HTTPStatusError)
+async def handle_httpx_http_status_error(req: Request, exc: httpx.HTTPStatusError) -> JSONResponse:
+    return JSONResponse(content={"code": 1, "msg": "infer server unavailable"})
+
+
+# ValidationError will raise when try parse infer server response body to a json.
+@app.exception_handler(ValidationError)
+async def handle_validation_error(req: Request, exc: ValidationError) -> JSONResponse:
+    return JSONResponse(content={"code": 2, "msg": "infer response invalid"})
+
+
+# NoPointError will raise when user do not have enough point but try infer some.
+@app.exception_handler(NoPointError)
+async def handle_no_point_error(req: Request, exc: NoPointError) -> JSONResponse:
+    return JSONResponse(content={"code": 3, "msg": "magic point not enough"})
+
+
+@app.post("/image",)
 async def replace_with_reference(
-    req: replace_models.Request,
+    req: Request,
     ses: deps.UserSession,
     db: deps.Database,
     conf: deps.Config,
-) -> replace_models.Response:
+) -> Response:
 
-    subscription = await query_valid_subscription(ses.uid, db)
-    if subscription.remains == 0:
-        logger.info(
-            f"user {ses.nickname}(uid {ses.uid}) try infer but no enough magic point."
-        )
-        return replace_models.Response(code=1, msg="no more magic points today.")
-
-    url = conf.infer.base + conf.infer.replace_any
-    resp = await ai.image.replace_with_any(url, ses.uid, secrets.token_hex(8), req)
-
-    if resp.code == 0:
-        subscription.remains -= 10
-        subscription.utime = datetime.now()
-        db.commit()
-        logger.info(f"reduce user {ses.nickname} (uid: {ses.uid}) magic point.")
-    return resp
-
-
-@router.post(
-    "/image2video", response_model=i2v_models.Response, response_model_exclude_none=True
-)
-async def make_i2v_process(
-    req: i2v_models.Request, ses: deps.UserSession, db: deps.Database, conf: deps.Config
-) -> i2v_models.Response:
-
-    logger.info(f"user {ses.nickname} (uid {ses.uid}) call image to video")
-    subscription = await query_valid_subscription(ses.uid, db)
-    if subscription.remains == 0:
-        logger.info(
-            f"user {ses.nickname}(uid {ses.uid}) try image to video but no enough magic point."
-        )
-        return i2v_models.Response(code=1, msg="no more magic points today.")
-
-    try:
-        url = conf.infer.base + conf.infer.image_to_video
-        result = await ai.i2v.generate(
-            url, ses.uid, req.init_image, req.text_prompt, 300
-        )
-        logger.debug("generate complete")
-
-        if result.code == 0:
+    async with query_valid_subscription(ses.uid, db) as subscription:
+        url = conf.infer.base + conf.infer.replace_any
+        code, resp = await forward_to_infer_srv(url, req)
+        if code == 0:
             subscription.remains -= 10
             subscription.utime = datetime.now()
-            db.commit()
-            logger.info(f"reduce user {ses.nickname} (uid: {ses.uid}) magic point.")
-
-        response = i2v_models.Response(
-            code=result.code, msg=result.msg, data=result.data
-        )
-        return response
-
-    except (ai.GenerateError, ai.ServerError) as e:
-        logger.error(f"generate video error, {str(e)}")
-        return i2v_models.Response(code=2, msg=str(e))
+        return resp
 
 
-@router.post(
+@app.post("/image2video")
+async def make_i2v_process(
+    req: Request, ses: deps.UserSession, db: deps.Database, conf: deps.Config
+) -> Response:
+
+    async with query_valid_subscription(ses.uid, db) as subscription:
+        url = conf.infer.base + conf.infer.image_to_video
+        code, resp = await forward_to_infer_srv(url, req)
+        if code == 0:
+            subscription.remains -= 10
+            subscription.utime = datetime.now()
+        return resp
+
+
+@app.post(
     "/segment_any",
     response_model=segment_models.Response,
     response_model_exclude_none=True,
 )
 async def segment_any(
-    req: segment_models.Request,
+    req: Request,
     ses: deps.UserSession,
     db: deps.Database,
     conf: deps.Config,
-) -> segment_models.Response:
-    logger.info(f"user {ses.nickname} call segment api.")
-    subscription = await query_valid_subscription(ses.uid, db)
+) -> Response:
 
-    if subscription.remains == 0:
-        logger.info(
-            f"user {ses.nickname}(uid {ses.uid}) try infer but no enough magic point."
-        )
-        return segment_models.Response(code=1, msg="no more magic points today.")
-
-    url = conf.infer.base + conf.infer.segment_any
-    resp = await ai.segment.segment(url, req)
-    if resp.code == 0:
-        subscription.remains -= 1
-        subscription.utime = datetime.now()
-        logger.info(f"reduce user {ses.nickname} uid {ses.uid} magic point.")
-        db.commit()
-    return resp
+    async with query_valid_subscription(ses.uid, db) as subscription:
+        url = conf.infer.base + conf.infer.segment_any
+        code, resp = await forward_to_infer_srv(url, req)
+        if code == 0:
+            subscription.remains -= 10
+            subscription.utime = datetime.now()
+        return resp

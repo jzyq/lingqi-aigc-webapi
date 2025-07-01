@@ -1,15 +1,16 @@
 from typing import Annotated, Generator
-from fastapi import Depends, Request, FastAPI, HTTPException
+from fastapi import Depends, Request, FastAPI, HTTPException, Header
 from sqlmodel import Session
 from .wx import secret, client
 from sqlalchemy import Engine
 import redis.asyncio as redis
-from . import common, sessions, config, ai
+from . import sessions, config
 
-from .async_task_manager import AsyncTaskManager
-from functools import cache
-from .models.infer import replace
+
 from .config import WechatSecretConfig
+
+
+HeaderField = Annotated[str, Header()]
 
 
 def set_db_session_deps(app: FastAPI, engine: Engine):
@@ -39,10 +40,11 @@ def get_rdb(req: Request) -> redis.Redis:
     return req.app.state.rdb
 
 
-def get_auth_token(authorization: common.HeaderField) -> str:
+def get_auth_token(authorization: HeaderField) -> str:
     auth_type, token = authorization.split(" ")
     if auth_type != "bearer" or token == "":
-        raise HTTPException(status_code=401, detail="no valid authorization to access.")
+        raise HTTPException(
+            status_code=401, detail="no valid authorization to access.")
     return token
 
 
@@ -67,31 +69,16 @@ SubscriptionPlan = Annotated[
 async def get_user_session(rdb: Rdb, token: AuthToken) -> sessions.Session:
     ses = await sessions.get_session_or_none(rdb, token)
     if ses is None:
-        raise HTTPException(status_code=401, detail="no valid authorization to access.")
+        raise HTTPException(
+            status_code=401, detail="no valid authorization to access.")
     return ses
 
 
 UserSession = Annotated[sessions.Session, Depends(get_user_session)]
 
 
-# For infer replace with any async task manager.
-@cache
-def get_replace_async_task_manager() -> (
-    AsyncTaskManager[replace.Request, replace.Response]
-):
-    async def proxy(uid: int, tid: str, req: replace.Request) -> replace.Response:
-        return await ai.image.replace_with_any("", uid, tid, req)
-
-    mgr = AsyncTaskManager[replace.Request, replace.Response](1, proxy)
-    return mgr
-
-
-ReplaceTasks = Annotated[
-    AsyncTaskManager[replace.Request, replace.Response],
-    Depends(get_replace_async_task_manager),
-]
-
 def get_conf() -> config.Config:
     return config.Config()
+
 
 Config = Annotated[config.Config, Depends(get_conf)]

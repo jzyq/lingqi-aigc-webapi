@@ -43,7 +43,7 @@ async def open_payment(
         out_trade_no=tradeid,
         notify_url=conf.wechat.payment_callback,
         amount=wx.models.PayAmount(total=req.amount),
-        time_expire=common.format_datetime(expires_in),
+        time_expire=common.dt.format_datetime(expires_in),
     )
 
     url = await wx_client.open_transaction(order)

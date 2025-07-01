@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Request, HTTPException, Response
+from fastapi import APIRouter, Request, HTTPException, Response, Header
 from sqlmodel import select
 from fastapi.responses import RedirectResponse
 
@@ -7,6 +7,8 @@ import json
 from loguru import logger
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
+
+from typing import Annotated
 
 
 router = APIRouter(prefix="/wx")
@@ -97,9 +99,9 @@ async def wechat_login_callback(
 
 
 @router.post("/pay/callback")
-async def wechat_pay_callback(wechatpay_timestamp: common.HeaderField,
-                              wechatpay_nonce: common.HeaderField,
-                              wechatpay_signature: common.HeaderField,
+async def wechat_pay_callback(wechatpay_timestamp: Annotated[str, Header()],
+                              wechatpay_nonce: Annotated[str, Header()],
+                              wechatpay_signature: Annotated[str, Header()],
                               wx: deps.WxClient,
                               db: deps.Database,
                               plans: deps.SubscriptionPlan,
@@ -129,7 +131,7 @@ async def wechat_pay_callback(wechatpay_timestamp: common.HeaderField,
 
     # Update recharge order state.
     recharage_order.transaction_id = result.transaction_id
-    recharage_order.success_time = common.parse_datetime(result.success_time)
+    recharage_order.success_time = common.dt.parse_datetime(result.success_time)
     recharage_order.reason = result.trade_state_desc
     if result.trade_state != "SUCCESS":
         logger.warning(f"pay failed of trade {result.out_trade_no}")
