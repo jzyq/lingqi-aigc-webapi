@@ -75,22 +75,32 @@ async def forward_to_infer(
     try:
         resp = resp.raise_for_status()
 
-        async with point_manager(req.uid, db) as pm:
-            infer_response = InferResponse.model_validate_json(resp.content)
-            if infer_response.code != 0:
+        infer_response = InferResponse.model_validate_json(resp.content)
+
+        # If infer have error, recharge point.
+        if infer_response.code != 0:
+            async with point_manager(req.uid, db) as pm:
                 pm.recharge(req.point)
                 logger.info(f"background infer {req.tid} error, recharge point.")
-            logger.info(f"background infer request {req.tid} complete.")
 
-            response = Response(content=resp.content, headers=resp.headers)
-            async with req.cond:
-                req.response = response
-                req.cond.notify_all()
+        logger.info(f"background infer request {req.tid} complete.")
+
+        response = Response(content=resp.content, headers=resp.headers)
+        async with req.cond:
+            req.response = response
+            req.cond.notify_all()
 
     except Exception as exc:
         async with req.cond:
             req.exception = exc
             req.cond.notify_all()
+
+        # If have exception, recharge point as well.
+        async with point_manager(req.uid, db) as pm:
+            pm.recharge(req.point)
+            logger.warning(
+                f"recharge point due to exception raise from background request {req.tid}"
+            )
 
 
 # Define router
