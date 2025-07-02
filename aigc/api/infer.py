@@ -5,7 +5,8 @@ from datetime import datetime
 import httpx
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
-from pydantic import ValidationError, BaseModel
+from loguru import logger
+from pydantic import BaseModel, ValidationError
 from sqlmodel import Session, select
 
 from .. import deps
@@ -54,8 +55,12 @@ async def query_valid_subscription(uid: int, db: Session) -> AsyncIterator[Magic
 
     try:
         yield subscription
-    finally:
+    except Exception as e:
+        logger.error(repr(e))
+        raise
+    else:
         db.commit()
+        logger.info(f"reduce user {uid} magic points.")
 
 
 async def forward_to_infer_srv(url: str, req: Request) -> tuple[int, Response]:
@@ -70,22 +75,25 @@ async def forward_to_infer_srv(url: str, req: Request) -> tuple[int, Response]:
 # HTTPStatusError will raise when forward to infer srver.
 @app.exception_handler(httpx.HTTPStatusError)
 async def handle_httpx_http_status_error(req: Request, exc: httpx.HTTPStatusError) -> JSONResponse:
+    logger.error(f"infer server unavailable, {repr(exc)}")
     return JSONResponse(content={"code": 1, "msg": "infer server unavailable"})
 
 
 # ValidationError will raise when try parse infer server response body to a json.
 @app.exception_handler(ValidationError)
 async def handle_validation_error(req: Request, exc: ValidationError) -> JSONResponse:
+    logger.error(f"infer response invalid, {repr(exc)}")
     return JSONResponse(content={"code": 2, "msg": "infer response invalid"})
 
 
 # NoPointError will raise when user do not have enough point but try infer some.
 @app.exception_handler(NoPointError)
 async def handle_no_point_error(req: Request, exc: NoPointError) -> JSONResponse:
+    logger.info(f"user {exc.uid} do not have magic point")
     return JSONResponse(content={"code": 3, "msg": "magic point not enough"})
 
 
-@app.post("/image",)
+@app.post("/image")
 async def replace_with_reference(
     req: Request,
     ses: deps.UserSession,
@@ -117,9 +125,7 @@ async def make_i2v_process(
 
 
 @app.post(
-    "/segment_any",
-    response_model=segment_models.Response,
-    response_model_exclude_none=True,
+    "/segment_any"
 )
 async def segment_any(
     req: Request,
