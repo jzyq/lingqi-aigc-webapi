@@ -11,8 +11,8 @@ from loguru import logger
 from pydantic import BaseModel, ValidationError
 from sqlmodel import Session, select
 
-from .. import deps
-from ..models.db import MagicPointSubscription, SubscriptionType
+from ... import deps
+from ...models.db import MagicPointSubscription, SubscriptionType
 
 
 class InferRoute(APIRoute):

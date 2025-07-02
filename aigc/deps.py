@@ -69,6 +69,9 @@ async def get_user_session(rdb: Rdb, token: AuthToken) -> sessions.Session:
     ses = await sessions.get_session_or_none(rdb, token)
     if ses is None:
         raise HTTPException(status_code=401, detail="no valid authorization to access.")
+    
+    # Refersh session automaticly when have valid session.
+    await sessions.refresh_session(rdb, token)
     return ses
 
 
