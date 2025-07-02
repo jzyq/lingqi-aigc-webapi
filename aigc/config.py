@@ -109,6 +109,9 @@ class MagicPointConfig:
 class InferConfig:
     base: str = field(default_factory=lambda: _c()["infer"]["base"])
     replace_any: str = field(default_factory=lambda: _c()["infer"]["replace_any"])
+    replace_reference: str = field(
+        default_factory=lambda: _c()["infer"]["replace_reference"]
+    )
     segment_any: str = field(default_factory=lambda: _c()["infer"]["segment_any"])
     image_to_video: str = field(default_factory=lambda: _c()["infer"]["image_to_video"])
 

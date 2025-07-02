@@ -4,7 +4,7 @@ from . import api
 
 router = APIRouter(prefix="/api")
 
-router.include_router(api.wx_router)
-router.include_router(api.user_router)
-router.include_router(api.payment_router)
-router.mount("/infer", api.infer.app)
+router.include_router(api.wx.router)
+router.include_router(api.user.router)
+router.include_router(api.payment.router)
+router.include_router(api.infer.router)

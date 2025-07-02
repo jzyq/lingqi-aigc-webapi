@@ -42,5 +42,6 @@ subscriptions = [
 base = "http://www.lingqi.tech:8991"
 
 replace_any = "/replace_with_any"
+replace_reference = "/replace_with_reference"
 segment_any = "/segment_any"
 image_to_video = "/wan_video_i2v_accelerate"
