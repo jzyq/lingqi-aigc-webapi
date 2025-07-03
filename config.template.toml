@@ -39,6 +39,8 @@ subscriptions = [
 ]
 
 [infer]
+long_poll_timeout = 30
+
 base = "http://www.lingqi.tech:8991"
 
 replace_any = "/replace_with_any"

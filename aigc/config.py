@@ -108,6 +108,10 @@ class MagicPointConfig:
 @dataclass
 class InferConfig:
     base: str = field(default_factory=lambda: _c()["infer"]["base"])
+    long_poll_timeout: int = field(
+        default_factory=lambda: _c()["infer"]["long_poll_timeout"]
+    )
+
     replace_any: str = field(default_factory=lambda: _c()["infer"]["replace_any"])
     replace_reference: str = field(
         default_factory=lambda: _c()["infer"]["replace_reference"]

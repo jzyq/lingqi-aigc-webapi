@@ -10,6 +10,7 @@ import asyncio
 from dataclasses import dataclass, field
 import secrets
 from loguru import logger
+from http import HTTPStatus
 
 STATE_IN_PROGRESS: str = "in progress"
 STATE_DOWN: str = "down"
@@ -43,6 +44,7 @@ class BackgroundRequest:
     cond: asyncio.Condition = field(default_factory=asyncio.Condition, init=False)
 
 
+# TODO: need to remove expired request data.
 # Class use to manage background requests.
 class BackgroundRequestsDict:
 
@@ -139,6 +141,33 @@ async def get_req_result(
             return infer_request.response
 
         raise NotDownError(tid)
+
+
+# API to long poll inference request result.
+@router.get("/{tid}/result/wait")
+async def wait_req_result(
+    tid: str, ses: deps.UserSession, req_dict: RequestsDict, conf: deps.Config
+) -> Response:
+    async with req_dict.lock:
+        infer_requests = req_dict.responses_by_uid[ses.uid][tid]
+
+    async with infer_requests.cond:
+
+        try:
+            async with asyncio.timeout(conf.infer.long_poll_timeout):
+                await infer_requests.cond.wait_for(
+                    lambda: infer_requests.response or infer_requests.exception
+                )
+        except TimeoutError:
+            pass
+
+        if infer_requests.exception:
+            raise infer_requests.exception
+
+        if infer_requests.response:
+            return infer_requests.response
+
+        return Response(status_code=HTTPStatus.NO_CONTENT)
 
 
 # API to create a background replace with any infer request.
