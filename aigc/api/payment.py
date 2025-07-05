@@ -1,8 +1,8 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from .. import deps, wx, models, config, common
 from loguru import logger
 from datetime import datetime, timedelta
-from sqlmodel import select
+from sqlmodel import select, Session
 
 router = APIRouter(prefix="/payment")
 
@@ -11,15 +11,14 @@ router = APIRouter(prefix="/payment")
 async def open_payment(
     req: models.payment.OpenPaymentRequest,
     ses: deps.UserSession,
-    wx_client: deps.WxClient,
-    plans: deps.SubscriptionPlan,
-    db: deps.Database,
-    conf: deps.Config,
+    db: Session = Depends(deps.get_db_session),
+    conf: config.Config = Depends(config.get_config),
+    wx_client: wx.client.WxClient = Depends(deps.get_wxclient),
 ) -> models.payment.OpenPaymentResponse:
 
     # Check subscription plans.
     subplan: config.MagicPointSubscription | None = None
-    for p in plans:
+    for p in conf.magic_points.subscriptions:
         if p.price == req.amount:
             subplan = p
             break
@@ -64,7 +63,7 @@ async def open_payment(
 
 @router.get("/state")
 async def get_payment_state(
-    tradeid: str, ses: deps.UserSession, db: deps.Database
+    tradeid: str, ses: deps.UserSession, db: Session = Depends(deps.get_db_session)
 ) -> models.payment.GetPaymentStateResponse:
 
     order = db.exec(

@@ -1,8 +1,9 @@
-from . import models, secret, crypto
+from . import models, crypto
 import json
 import time
 from urllib.parse import quote_plus
 import httpx
+from ..config import WechatSecretConfig
 
 
 WX_MAIN_HOST = "https://api.mch.weixin.qq.com"
@@ -43,37 +44,37 @@ class CryptoHelper:
 
     @staticmethod
     def make_auth_str(
-        sec: secret.WxSecrets, timestamp: str, nonce: str, sign: str
+        sec: WechatSecretConfig, timestamp: str, nonce: str, sign: str
     ) -> str:
         auth_type = "WECHATPAY2-SHA256-RSA2048"
         return f'{auth_type} mchid="{sec.mch_id}",nonce_str="{nonce}",signature="{sign}",timestamp="{timestamp}",serial_no="{sec.mch_cert_serial}"'
 
     @staticmethod
     def signature(
-        sec: secret.WxSecrets, method: str, url: str, body: str
+        sec: WechatSecretConfig, method: str, url: str, body: str
     ) -> dict[str, str]:
         nonce = crypto.make_nonce_str()
         timestamp = CryptoHelper.make_timestamp_str()
         prepare_sign = f"{method}\n{url}\n{timestamp}\n{nonce}\n{body}\n"
-        sign = crypto.sha256_with_rsa_sign(sec.apiclient_key, prepare_sign.encode())
+        sign = crypto.sha256_with_rsa_sign(sec.api_client_key, prepare_sign.encode())
         auth = CryptoHelper.make_auth_str(sec, timestamp, nonce, sign.decode())
         return {"Authorization": auth}
 
     @staticmethod
     def verify(
-        sec: secret.WxSecrets, timestamp: str, nonce: str, sign: str, data: str
+        sec: WechatSecretConfig, timestamp: str, nonce: str, sign: str, data: str
     ) -> bool:
         data = f"{timestamp}\n{nonce}\n{data}\n"
-        return crypto.sha256_with_rsa_verify(sec.wxpay_pub_key, sign.encode(), data)
+        return crypto.sha256_with_rsa_verify(sec.pub_key, sign.encode(), data)
 
 
-def new_client(secerts: secret.WxSecrets) -> "WxClient":
+def new_client(secerts: WechatSecretConfig) -> "WxClient":
     return WxClient(secerts)
 
 
 class WxClient:
 
-    def __init__(self, sec: secret.WxSecrets) -> None:
+    def __init__(self, sec: WechatSecretConfig) -> None:
         self.sec = sec
 
     async def open_transaction(self, order: models.Order) -> str:
@@ -228,7 +229,7 @@ class WxClient:
 
         return (
             "https://open.weixin.qq.com/connect/qrconnect"
-            + f"?appid={self.sec.login_app_id}"
+            + f"?appid={self.sec.login_id}"
             + f"&redirect_uri={redirect_url}"
             + "&response_type=code&scope=snsapi_login"
             + f"&state={state}"
@@ -238,7 +239,7 @@ class WxClient:
     async def require_access_token(self, code: str) -> models.AccessToken:
         token_url = "https://api.weixin.qq.com/sns/oauth2/access_token"
         params = {
-            "appid": self.sec.login_app_id,
+            "appid": self.sec.login_id,
             "secret": self.sec.app_secret,
             "code": code,
             "grant_type": "authorization_code",

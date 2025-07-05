@@ -1,39 +1,33 @@
-from typing import Annotated, Generator
+from typing import Annotated
+from collections.abc import Iterator
 from fastapi import Depends, Request, FastAPI, HTTPException, Header
 from sqlmodel import Session
-from .wx import secret, client
 from sqlalchemy import Engine
 import redis.asyncio as redis
-from . import sessions, config
+from . import sessions, config, wx, models
+
+from functools import cache
 
 
-from .config import WechatSecretConfig
+def get_db_file_path(conf: config.Config = Depends(config.get_config)) -> str:
+    return conf.database.file
+
+
+@cache
+def get_db_engine(filepath: str = Depends(get_db_file_path)) -> Engine:
+    return models.initialize_database_io(filepath)
+
+
+def get_db_session(engine: Engine = Depends(get_db_engine)) -> Iterator[Session]:
+    with Session(engine) as s:
+        yield s
 
 
 HeaderField = Annotated[str, Header()]
 
 
-def set_db_session_deps(app: FastAPI, engine: Engine):
-    app.state.engine = engine
-
-
-def set_wx_client_deps(app: FastAPI, conf: WechatSecretConfig):
-    s = secret.must_load_secert(conf)
-    wx_client = client.new_client(secerts=s)
-    app.state.wx_client = wx_client
-
-
 def set_rdb_deps(app: FastAPI, rdb: redis.Redis):
     app.state.rdb = rdb
-
-
-def get_session(req: Request) -> Generator[Session, None, None]:
-    with Session(req.app.state.engine) as s:
-        yield s
-
-
-def get_wx_client(req: Request) -> client.WxClient:
-    return req.app.state.wx_client
 
 
 def get_rdb(req: Request) -> redis.Redis:
@@ -47,29 +41,16 @@ def get_auth_token(authorization: HeaderField) -> str:
     return token
 
 
-def get_subscriptions_plan() -> list[config.MagicPointSubscription]:
-    conf = config.MagicPointConfig()
-    return conf.subscriptions
-
-
-Database = Annotated[Session, Depends(get_session)]
-
-WxClient = Annotated[client.WxClient, Depends(get_wx_client)]
-
 Rdb = Annotated[redis.Redis, Depends(get_rdb)]
 
 AuthToken = Annotated[str, Depends(get_auth_token)]
-
-SubscriptionPlan = Annotated[
-    list[config.MagicPointSubscription], Depends(get_subscriptions_plan)
-]
 
 
 async def get_user_session(rdb: Rdb, token: AuthToken) -> sessions.Session:
     ses = await sessions.get_session_or_none(rdb, token)
     if ses is None:
         raise HTTPException(status_code=401, detail="no valid authorization to access.")
-    
+
     # Refersh session automaticly when have valid session.
     await sessions.refresh_session(rdb, token)
     return ses
@@ -78,8 +59,7 @@ async def get_user_session(rdb: Rdb, token: AuthToken) -> sessions.Session:
 UserSession = Annotated[sessions.Session, Depends(get_user_session)]
 
 
-def get_conf() -> config.Config:
-    return config.Config()
-
-
-Config = Annotated[config.Config, Depends(get_conf)]
+def get_wxclient(
+    conf: config.Config = Depends(config.get_config),
+) -> wx.client.WxClient:
+    return wx.client.new_client(conf.wechat.secrets)

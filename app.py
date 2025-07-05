@@ -1,5 +1,5 @@
 import uvicorn
-from aigc import config, models, deps, bg_tasks
+from aigc import config, deps, bg_tasks
 from argparse import ArgumentParser
 import redis.asyncio as redis
 from contextlib import asynccontextmanager
@@ -8,6 +8,35 @@ from sqlmodel import Session
 from loguru import logger
 
 from aigc.router import router
+
+
+# Make app lifespan manager.
+@asynccontextmanager
+async def app_lifespan(app: FastAPI):
+    conf = config.get_config()
+
+    # Setup redis connection.
+    conn_pool = redis.ConnectionPool(
+        host=conf.redis.host,
+        port=conf.redis.port,
+        db=conf.redis.db,
+        decode_responses=True,
+    )
+    rdb = redis.Redis(connection_pool=conn_pool)
+    deps.set_rdb_deps(app, rdb)
+
+    # Setup subscription manage task.
+    # TODO: if reload config, database file may changed so must reload this task.
+    dbses = Session(deps.get_db_engine(conf.database.file))
+    refresh_task = bg_tasks.arrage_refresh_subscriptions(dbses)
+
+    yield
+
+    refresh_task.cancel()
+    await refresh_task
+    dbses.close()
+
+    await conn_pool.aclose()
 
 
 def main() -> None:
@@ -19,41 +48,14 @@ def main() -> None:
     arguments = parser.parse_args()
 
     # Load default config, default can overwrite by env variables.
-    config.setup_config_file(arguments.config)
-    conf = config.Config()
-
-    # Make app lifespan manager.
-    @asynccontextmanager
-    async def app_lifespan(app: FastAPI):
-        deps.set_wx_client_deps(app, conf.wechat.secrets)
-
-        engine = models.initialize_database_io(conf.database.file)
-        deps.set_db_session_deps(app, engine)
-
-        conn_pool = redis.ConnectionPool(
-            host=conf.redis.host,
-            port=conf.redis.port,
-            db=conf.redis.db,
-            decode_responses=True,
-        )
-        rdb = redis.Redis(connection_pool=conn_pool)
-        deps.set_rdb_deps(app, rdb)
-
-        dbses = Session(engine)
-        refresh_task = bg_tasks.arrage_refresh_subscriptions(dbses)
-
-        yield
-
-        refresh_task.cancel()
-        await refresh_task
-        dbses.close()
-
-        await conn_pool.aclose()
+    logger.info(f"config file path: {arguments.config}")
+    config.set_config_file_path(arguments.config)
 
     app = FastAPI(lifespan=app_lifespan)
     app.include_router(router)
 
     try:
+        conf = config.get_config()
         uvicorn.run(app, host=conf.web.host, port=conf.web.port, timeout_keep_alive=300)
     except KeyboardInterrupt:
         pass

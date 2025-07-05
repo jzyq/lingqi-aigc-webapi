@@ -4,7 +4,7 @@ from loguru import logger
 from . import models
 import asyncio
 
-
+# FIXME: when near middle, it may return 0 second delay.
 def delay_to_next_middle_night(now: datetime) -> int:
     next_middlenight = now.replace(
         hour=0, minute=0, second=0, microsecond=0
@@ -16,9 +16,7 @@ def delay_to_next_middle_night(now: datetime) -> int:
 def refresh_subscriptions(db: Session, dt: datetime):
     subscriptions = db.exec(
         select(models.db.MagicPointSubscription).where(
-            models.db.MagicPointSubscription.stype
-            == models.db.SubscriptionType.subscription
-            and models.db.MagicPointSubscription.expired == False
+            models.db.MagicPointSubscription.expired == False
         )
     ).all()
 
@@ -71,8 +69,7 @@ def arrage_refresh_subscriptions(db: Session) -> asyncio.Task[None]:
         refresh_subscriptions(db, now)
 
     # Arrage next fresh.
-    # Add a 30 secnods delay to prevent multiple refresh at same time.
-    delay_s = delay_to_next_middle_night(now) + 30
+    delay_s = delay_to_next_middle_night(now)
     logger.debug(f"next refresh {delay_s} seconds after.")
 
     return asyncio.create_task(refresh_forever(db, delay_s))

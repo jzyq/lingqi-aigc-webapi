@@ -1,10 +1,11 @@
 import httpx
-from fastapi import APIRouter, Request, Response
+from fastapi import APIRouter, Request, Response, Depends
 from loguru import logger
 
-from ... import deps
+from ... import deps, config
 
 from .common import NoPointError, InferResponse, point_manager, InferRoute
+from sqlmodel import Session
 
 
 # Forward request to infer server and return is resp code and body.
@@ -26,8 +27,8 @@ router = APIRouter(prefix="/infer", route_class=InferRoute)
 async def old_replace_with_reference(
     req: Request,
     ses: deps.UserSession,
-    db: deps.Database,
-    conf: deps.Config,
+    db: Session = Depends(deps.get_db_session),
+    conf: config.Config = Depends(config.get_config),
 ) -> Response:
 
     async with point_manager(ses.uid, db) as pm:
@@ -48,8 +49,8 @@ async def old_replace_with_reference(
 async def replace_with_any(
     req: Request,
     ses: deps.UserSession,
-    db: deps.Database,
-    conf: deps.Config,
+    db: Session = Depends(deps.get_db_session),
+    conf: config.Config = Depends(config.get_config),
 ) -> Response:
 
     async with point_manager(ses.uid, db) as pm:
@@ -70,8 +71,8 @@ async def replace_with_any(
 async def replace_with_reference(
     req: Request,
     ses: deps.UserSession,
-    db: deps.Database,
-    conf: deps.Config,
+    db: Session = Depends(deps.get_db_session),
+    conf: config.Config = Depends(config.get_config),
 ) -> Response:
 
     async with point_manager(ses.uid, db) as pm:
@@ -90,7 +91,10 @@ async def replace_with_reference(
 
 @router.post("/image2video")
 async def make_i2v_process(
-    req: Request, ses: deps.UserSession, db: deps.Database, conf: deps.Config
+    req: Request,
+    ses: deps.UserSession,
+    db: Session = Depends(deps.get_db_session),
+    conf: config.Config = Depends(config.get_config),
 ) -> Response:
 
     async with point_manager(ses.uid, db) as pm:
@@ -111,8 +115,8 @@ async def make_i2v_process(
 async def segment_any(
     req: Request,
     ses: deps.UserSession,
-    db: deps.Database,
-    conf: deps.Config,
+    db: Session = Depends(deps.get_db_session),
+    conf: config.Config = Depends(config.get_config),
 ) -> Response:
 
     async with point_manager(ses.uid, db) as pm:

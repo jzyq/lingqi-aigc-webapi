@@ -1,5 +1,5 @@
-from fastapi import APIRouter, Request, HTTPException, Response, Header
-from sqlmodel import select
+from fastapi import APIRouter, Request, HTTPException, Response, Header, Depends
+from sqlmodel import select, Session
 from fastapi.responses import RedirectResponse
 
 from .. import deps, sessions, models, config, wx as wechat, common
@@ -12,31 +12,35 @@ from typing import Annotated
 
 
 router = APIRouter(prefix="/wx")
-conf = config.Config()
 
 
 @router.get("/login/callback")
 async def wechat_login_callback(
-        code: str,
-        state: str,
-        db: deps.Database,
-        rdb: deps.Rdb,
-        wx: deps.WxClient,
-        conf: deps.Config):
+    code: str,
+    state: str,
+    rdb: deps.Rdb,
+    db: Session = Depends(deps.get_db_session),
+    conf: config.Config = Depends(config.get_config),
+    wx: wechat.client.WxClient = Depends(deps.get_wxclient),
+):
 
     # Fetch use info
     logger.info("wx login callback.")
     try:
         tk = await wx.require_access_token(code)
-        user_info = await wx.fetch_user_info(openid=tk.openid, access_token=tk.access_token)
-        logger.info(
-            f"unionid {user_info.unionid}, nickname: {user_info.nickname}")
+        user_info = await wx.fetch_user_info(
+            openid=tk.openid, access_token=tk.access_token
+        )
+        logger.info(f"unionid {user_info.unionid}, nickname: {user_info.nickname}")
     except wechat.CallError as e:
         logger.error(f"fetch wx user info error, {e}")
         raise HTTPException(status_code=500, detail=e.msg)
 
-    exists_wxuinfo = db.exec(select(models.db.WxUserInfo).where(
-        models.db.WxUserInfo.unionid == user_info.unionid)).one_or_none()
+    exists_wxuinfo = db.exec(
+        select(models.db.WxUserInfo).where(
+            models.db.WxUserInfo.unionid == user_info.unionid
+        )
+    ).one_or_none()
 
     # If wx user already exists. just do login.
     if exists_wxuinfo is not None:
@@ -63,8 +67,12 @@ async def wechat_login_callback(
         logger.info(f"new wx user {user_info.unionid} register.")
 
         # Create new user.
-        new_user = models.db.User(username=f"wx_{user_info.unionid}", nickname=user_info.nickname,
-                                  avatar=user_info.headimgurl, wx_id=user_info.unionid)
+        new_user = models.db.User(
+            username=f"wx_{user_info.unionid}",
+            nickname=user_info.nickname,
+            avatar=user_info.headimgurl,
+            wx_id=user_info.unionid,
+        )
         db.add(new_user)
         db.commit()
         db.refresh(new_user)
@@ -77,7 +85,7 @@ async def wechat_login_callback(
             uid=new_user.id,
             avatar=user_info.headimgurl,
             nickname=user_info.nickname,
-            unionid=user_info.unionid
+            unionid=user_info.unionid,
         )
         db.add(wx_record)
         db.commit()
@@ -85,9 +93,14 @@ async def wechat_login_callback(
         # Give a init point subscription.
         dt = datetime.now()
         init_point = conf.magic_points.trail_free_point
-        subscription = models.db.MagicPointSubscription(uid=new_user.id, stype=models.db.SubscriptionType.trail,
-                                                        init=init_point, remains=init_point,
-                                                        ctime=dt, utime=dt)
+        subscription = models.db.MagicPointSubscription(
+            uid=new_user.id,
+            stype=models.db.SubscriptionType.trail,
+            init=init_point,
+            remains=init_point,
+            ctime=dt,
+            utime=dt,
+        )
         db.add(subscription)
         db.commit()
 
@@ -99,33 +112,41 @@ async def wechat_login_callback(
 
 
 @router.post("/pay/callback")
-async def wechat_pay_callback(wechatpay_timestamp: Annotated[str, Header()],
-                              wechatpay_nonce: Annotated[str, Header()],
-                              wechatpay_signature: Annotated[str, Header()],
-                              wx: deps.WxClient,
-                              db: deps.Database,
-                              plans: deps.SubscriptionPlan,
-                              request: Request) -> Response:
+async def wechat_pay_callback(
+    request: Request,
+    wechatpay_timestamp: Annotated[str, Header()],
+    wechatpay_nonce: Annotated[str, Header()],
+    wechatpay_signature: Annotated[str, Header()],
+    db: Session = Depends(deps.get_db_session),
+    wx: wechat.client.WxClient = Depends(deps.get_wxclient),
+    conf: config.Config = Depends(config.get_config)
+) -> Response:
 
     body = await request.body()
 
     # Verify if data come from wx server.
-    if not wx.verify(wechatpay_timestamp, wechatpay_nonce, wechatpay_signature, body.decode()):
-        raise HTTPException(status_code=400, detail=json.dumps({
-            "code": "FAIL",
-            "message": "失败"
-        }, ensure_ascii=False))
+    if not wx.verify(
+        wechatpay_timestamp, wechatpay_nonce, wechatpay_signature, body.decode()
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail=json.dumps({"code": "FAIL", "message": "失败"}, ensure_ascii=False),
+        )
 
     # Decrypt pay result.
     req = models.payment.PayCallbackRequest.model_validate_json(body)
-    assert req.resource.algorithm == 'AEAD_AES_256_GCM'
-    plaintext = wx.decrypt(req.resource.ciphertext,
-                           req.resource.nonce, req.resource.associated_data)
+    assert req.resource.algorithm == "AEAD_AES_256_GCM"
+    plaintext = wx.decrypt(
+        req.resource.ciphertext, req.resource.nonce, req.resource.associated_data
+    )
     result = models.payment.PayCallbackResult.model_validate_json(plaintext)
     logger.debug(result.model_dump_json())
 
-    recharage_order = db.exec(select(models.db.Recharge).where(
-        models.db.Recharge.tradeid == result.out_trade_no)).one()
+    recharage_order = db.exec(
+        select(models.db.Recharge).where(
+            models.db.Recharge.tradeid == result.out_trade_no
+        )
+    ).one()
 
     assert result.amount.total == recharage_order.amount
 
@@ -142,31 +163,44 @@ async def wechat_pay_callback(wechatpay_timestamp: Annotated[str, Header()],
 
         # TODO: update user subscription.
         subplan: config.MagicPointSubscription | None = None
-        for p in plans:
+        for p in conf.magic_points.subscriptions:
             if recharage_order.amount == p.price:
                 subplan = p
                 break
         assert subplan is not None
 
         # Expire current subscription.
-        current_sub = db.exec(select(models.db.MagicPointSubscription)
-                              .where(models.db.MagicPointSubscription.uid == recharage_order.uid)
-                              .where(models.db.MagicPointSubscription.expired == False)
-                              .where(models.db.MagicPointSubscription.stype == models.db.SubscriptionType.subscription)
-                              ).one()
+        current_sub = db.exec(
+            select(models.db.MagicPointSubscription)
+            .where(models.db.MagicPointSubscription.uid == recharage_order.uid)
+            .where(models.db.MagicPointSubscription.expired == False)
+            .where(
+                models.db.MagicPointSubscription.stype
+                == models.db.SubscriptionType.subscription
+            )
+        ).one_or_none()
 
-        current_sub.expired = True
+        if current_sub is not None:
+            current_sub.expired = True
 
         # Set new subscription.
         dt = datetime.now()
         expires_in = dt.replace(
-            hour=0, minute=0, second=0, microsecond=0) + relativedelta(months=subplan.month)
-        newsub = models.db.MagicPointSubscription(uid=recharage_order.uid, stype=models.db.SubscriptionType.subscription,
-                                                  init=subplan.points, remains=subplan.points,
-                                                  ctime=dt, utime=dt, expires_in=expires_in)
+            hour=0, minute=0, second=0, microsecond=0
+        ) + relativedelta(months=subplan.month)
+        newsub = models.db.MagicPointSubscription(
+            uid=recharage_order.uid,
+            stype=models.db.SubscriptionType.subscription,
+            init=subplan.points,
+            remains=subplan.points,
+            ctime=dt,
+            utime=dt,
+            expires_in=expires_in,
+        )
         db.add(newsub)
         logger.info(
-            f"uid {recharage_order.uid} new subscription, {subplan.price/100} for {subplan.month}, {subplan.points} each day.")
+            f"uid {recharage_order.uid} new subscription, {subplan.price/100} for {subplan.month}, {subplan.points} each day."
+        )
 
     db.commit()
 
@@ -174,5 +208,8 @@ async def wechat_pay_callback(wechatpay_timestamp: Annotated[str, Header()],
 
 
 @router.get("/qrlogin")
-async def qrcode_login(wx: deps.WxClient):
+async def qrcode_login(
+    conf: config.Config = Depends(config.get_config),
+    wx: wechat.client.WxClient = Depends(deps.get_wxclient),
+):
     return RedirectResponse(url=wx.get_qrcode_login_url(conf.wechat.login_redirect, ""))

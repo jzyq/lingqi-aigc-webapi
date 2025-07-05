@@ -13,7 +13,7 @@ db = 0
 file = "database.db"
 
 [wechat]
-logint_redirect = "https://www.lingqi.tech/aigc/api/wx/login/callback"
+login_redirect = "https://www.lingqi.tech/aigc/api/wx/login/callback"
 payment_callback = "https://www.lingqi.tech/aigc/api/wx/pay/callback"
 payment_expires = 300
 

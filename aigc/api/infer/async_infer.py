@@ -1,19 +1,36 @@
 from fastapi import APIRouter, Depends, Response, Request, BackgroundTasks
 from functools import cache
-from typing import Annotated, Mapping
+from typing import Mapping, TypeAlias
+from collections.abc import Callable, Awaitable
 
-from ... import deps
+from ... import deps, config
 from pydantic import BaseModel
 import httpx
-from .common import point_manager, NoPointError, InferResponse, InferRoute, NotDownError
+from .common import (
+    point_manager,
+    NoPointError,
+    InferResponse,
+    InferRoute,
+    NotDownError,
+    CancelError,
+)
 import asyncio
 from dataclasses import dataclass, field
 import secrets
 from loguru import logger
 from http import HTTPStatus
+from sqlmodel import Session
 
+
+STATE_WAITING: str = "waiting"
 STATE_IN_PROGRESS: str = "in progress"
 STATE_DOWN: str = "down"
+
+
+# Normal response.
+class APIResponse(BaseModel):
+    code: int
+    msg: str
 
 
 # Response model when append new request and query requests state.
@@ -21,6 +38,7 @@ class GetStateResponse(BaseModel):
     code: int
     msg: str
     tid: str
+    index: int
     state: str
 
 
@@ -34,14 +52,12 @@ class CreateRequestResponse(BaseModel):
 # Define background request metadata.
 @dataclass
 class BackgroundRequest:
-    uid: int
-    point: int
-    content: bytes
-    headers: Mapping[str, str]
-    tid: str = field(default_factory=lambda: secrets.token_hex(8))
     exception: Exception | None = field(default=None, init=False)
     response: Response | None = field(default=None, init=False)
     cond: asyncio.Condition = field(default_factory=asyncio.Condition, init=False)
+
+
+RequestFunc: TypeAlias = Callable[[str, bytes, Mapping[str, str]], Awaitable[None]]
 
 
 # TODO: need to remove expired request data.
@@ -50,7 +66,75 @@ class BackgroundRequestsDict:
 
     def __init__(self) -> None:
         self.lock = asyncio.Lock()
+        self.cond = asyncio.Condition()
+        self.request_list: list[BackgroundRequest] = []
         self.responses_by_uid: dict[int, dict[str, BackgroundRequest]] = {}
+
+    async def new_request(self, uid: int, point: int) -> tuple[str, RequestFunc]:
+        tid: str = secrets.token_hex(8)
+        task = BackgroundRequest()
+
+        async with self.cond:
+            self.request_list.append(task)
+            if uid not in self.responses_by_uid:
+                self.responses_by_uid[uid] = {}
+            self.responses_by_uid[uid][tid] = task
+            self.cond.notify_all()
+
+        async def worker(url: str, content: bytes, headers: Mapping[str, str]) -> None:
+            ses = Session(deps.get_db_engine(config.get_config().database.file))
+
+            try:
+                async with self.cond:
+                    logger.debug(f"infer request {tid} waiting")
+                    await self.cond.wait_for(
+                        lambda: task not in self.request_list
+                        or self.request_list.index(task) == 0
+                    )
+                    if task not in self.request_list:
+                        raise CancelError(tid)
+
+                logger.debug(f"infer request {tid} in progress")
+
+                # Send infer request.
+                async with httpx.AsyncClient(timeout=None) as client:
+                    resp = await client.post(url, content=content, headers=headers)
+                    logger.debug(f"infer server response request {tid}")
+
+                # Check response, if infer result code not equal to 0, give point back.
+                resp.raise_for_status()
+                response = InferResponse.model_validate_json(resp.content)
+                if response.code != 0:
+                    async with point_manager(uid, ses) as pm:
+                        pm.recharge(point)
+                        logger.info("inference srv not success, recharge point.")
+
+                # Set infer result.
+                async with task.cond:
+                    task.response = Response(content=resp.content, headers=resp.headers)
+                    task.cond.notify_all()
+
+            except Exception as exc:
+                logger.error(f"background request encounter error, {str(exc)}")
+
+                # If have exception, recharge point as well.
+                async with point_manager(uid, ses) as pm:
+                    pm.recharge(point)
+                    logger.info(f"request error, recharge point.")
+
+                async with task.cond:
+                    task.exception = exc
+                    task.cond.notify_all()
+
+            finally:
+                ses.close()
+                async with self.cond:
+                    if task in self.request_list:
+                        self.request_list.remove(task)
+                    self.cond.notify_all()
+                logger.debug(f"infer request {tid} down.")
+
+        return (tid, worker)
 
 
 # A function to build requests dict with cache.
@@ -60,51 +144,6 @@ def get_requests_dict() -> BackgroundRequestsDict:
     return BackgroundRequestsDict()
 
 
-# Depends of requests dict.
-RequestsDict = Annotated[BackgroundRequestsDict, Depends(get_requests_dict)]
-
-
-# Forward request to infer server, and set raw response when complete.
-async def forward_to_infer(
-    url: str,
-    req: BackgroundRequest,
-    db: deps.Database,
-):
-    async with httpx.AsyncClient(timeout=None) as client:
-        resp = await client.post(url, content=req.content, headers=req.headers)
-        logger.debug(f"infer server response request {req.tid}")
-
-    try:
-        resp = resp.raise_for_status()
-
-        infer_response = InferResponse.model_validate_json(resp.content)
-
-        # If infer have error, recharge point.
-        if infer_response.code != 0:
-            async with point_manager(req.uid, db) as pm:
-                pm.recharge(req.point)
-                logger.info(f"background infer {req.tid} error, recharge point.")
-
-        logger.info(f"background infer request {req.tid} complete.")
-
-        response = Response(content=resp.content, headers=resp.headers)
-        async with req.cond:
-            req.response = response
-            req.cond.notify_all()
-
-    except Exception as exc:
-        async with req.cond:
-            req.exception = exc
-            req.cond.notify_all()
-
-        # If have exception, recharge point as well.
-        async with point_manager(req.uid, db) as pm:
-            pm.recharge(req.point)
-            logger.warning(
-                f"recharge point due to exception raise from background request {req.tid}"
-            )
-
-
 # Define router
 router = APIRouter(prefix="/async/infer", route_class=InferRoute)
 
@@ -112,13 +151,27 @@ router = APIRouter(prefix="/async/infer", route_class=InferRoute)
 # API to query background requests current state, no block.
 @router.get("/{tid}/state")
 async def get_req_state(
-    tid: str, ses: deps.UserSession, req_dict: RequestsDict
+    tid: str,
+    ses: deps.UserSession,
+    req_dict: BackgroundRequestsDict = Depends(get_requests_dict),
 ) -> GetStateResponse:
 
-    response = GetStateResponse(code=0, msg="ok", tid=tid, state=STATE_IN_PROGRESS)
+    response = GetStateResponse(
+        code=0, msg="ok", tid=tid, index=0, state=STATE_IN_PROGRESS
+    )
 
     async with req_dict.lock:
         infer_request = req_dict.responses_by_uid[ses.uid][tid]
+
+        try:
+            idx = req_dict.request_list.index(infer_request)
+            if idx != 0:
+                response.index = idx
+                response.state = STATE_WAITING
+                return response
+        except ValueError:
+            pass
+
         if infer_request.exception or infer_request.response:
             response.state = STATE_DOWN
 
@@ -128,7 +181,9 @@ async def get_req_state(
 # API to get result of a request if have, no block.
 @router.get("/{tid}/result")
 async def get_req_result(
-    tid: str, ses: deps.UserSession, req_dict: RequestsDict
+    tid: str,
+    ses: deps.UserSession,
+    req_dict: BackgroundRequestsDict = Depends(get_requests_dict),
 ) -> Response:
 
     async with req_dict.lock:
@@ -146,7 +201,10 @@ async def get_req_result(
 # API to long poll inference request result.
 @router.get("/{tid}/result/wait")
 async def wait_req_result(
-    tid: str, ses: deps.UserSession, req_dict: RequestsDict, conf: deps.Config
+    tid: str,
+    ses: deps.UserSession,
+    req_dict: BackgroundRequestsDict = Depends(get_requests_dict),
+    conf: config.Config = Depends(config.get_config),
 ) -> Response:
     async with req_dict.lock:
         infer_requests = req_dict.responses_by_uid[ses.uid][tid]
@@ -170,37 +228,49 @@ async def wait_req_result(
         return Response(status_code=HTTPStatus.NO_CONTENT)
 
 
+# API to cancel waiting request
+@router.post("/{tid}/cancel")
+async def cancel_waiting_request(
+    tid: str,
+    ses: deps.UserSession,
+    req_dict: BackgroundRequestsDict = Depends(get_requests_dict),
+) -> APIResponse:
+
+    async with req_dict.cond:
+        infer_request = req_dict.responses_by_uid[ses.uid][tid]
+
+        try:
+            idx = req_dict.request_list.index(infer_request)
+            if idx != 0:
+                req_dict.request_list.remove(infer_request)
+                req_dict.cond.notify_all()
+
+        except ValueError:
+            pass
+
+    return APIResponse(code=0, msg="task canceled")
+
+
 # API to create a background replace with any infer request.
 @router.post("/replace_any")
 async def replace_with_any(
     req: Request,
     ses: deps.UserSession,
-    db: deps.Database,
-    conf: deps.Config,
-    req_dict: RequestsDict,
     bg: BackgroundTasks,
+    db: Session = Depends(deps.get_db_session),
+    req_dict: BackgroundRequestsDict = Depends(get_requests_dict),
+    conf: config.Config = Depends(config.get_config),
 ) -> CreateRequestResponse:
     async with point_manager(ses.uid, db) as pm:
         if pm.magic_points < 10:
             raise NoPointError(ses.uid)
+        pm.deduct(10)
 
-    # Gen task id, create memories.
-    content = await req.body()
-    headers = req.headers
-    bg_req = BackgroundRequest(ses.uid, 10, content, headers)
+        tid, worker = await req_dict.new_request(ses.uid, 10)
+        url = conf.infer.base + conf.infer.replace_any
+        bg.add_task(worker, url, await req.body(), req.headers)
 
-    async with req_dict.lock:
-        if ses.uid not in req_dict.responses_by_uid:
-            req_dict.responses_by_uid[ses.uid] = {}
-        req_dict.responses_by_uid[ses.uid][bg_req.tid] = bg_req
-
-    # Add background task.
-    url = conf.infer.base + conf.infer.replace_any
-    bg.add_task(forward_to_infer, url, bg_req, db)
-
-    # Pre deduct point prevent excceed limit.
-    pm.deduct(10)
-    return CreateRequestResponse(code=0, msg="ok", tid=bg_req.tid)
+    return CreateRequestResponse(code=0, msg="ok", tid=tid)
 
 
 # API to create a background replace with reference infer request.
@@ -208,32 +278,21 @@ async def replace_with_any(
 async def replace_with_reference(
     req: Request,
     ses: deps.UserSession,
-    db: deps.Database,
-    conf: deps.Config,
-    req_dict: RequestsDict,
     bg: BackgroundTasks,
+    db: Session = Depends(deps.get_db_session),
+    req_dict: BackgroundRequestsDict = Depends(get_requests_dict),
+    conf: config.Config = Depends(config.get_config),
 ) -> CreateRequestResponse:
     async with point_manager(ses.uid, db) as pm:
         if pm.magic_points < 10:
             raise NoPointError(ses.uid)
+        pm.deduct(10)
 
-    # Gen task id, create memories.
-    content = await req.body()
-    headers = req.headers
-    bg_req = BackgroundRequest(ses.uid, 10, content, headers)
+        tid, worker = await req_dict.new_request(ses.uid, 10)
+        url = conf.infer.base + conf.infer.replace_reference
+        bg.add_task(worker, url, await req.body(), req.headers)
 
-    async with req_dict.lock:
-        if ses.uid not in req_dict.responses_by_uid:
-            req_dict.responses_by_uid[ses.uid] = {}
-        req_dict.responses_by_uid[ses.uid][bg_req.tid] = bg_req
-
-    # Add background task.
-    url = conf.infer.base + conf.infer.replace_reference
-    bg.add_task(forward_to_infer, url, bg_req, db)
-
-    # Pre deduct point prevent excceed limit.
-    pm.deduct(10)
-    return CreateRequestResponse(code=0, msg="ok", tid=bg_req.tid)
+    return CreateRequestResponse(code=0, msg="ok", tid=tid)
 
 
 # API to create a background image to video request.
@@ -241,32 +300,21 @@ async def replace_with_reference(
 async def image_to_video(
     req: Request,
     ses: deps.UserSession,
-    db: deps.Database,
-    conf: deps.Config,
-    req_dict: RequestsDict,
     bg: BackgroundTasks,
+    db: Session = Depends(deps.get_db_session),
+    req_dict: BackgroundRequestsDict = Depends(get_requests_dict),
+    conf: config.Config = Depends(config.get_config),
 ) -> CreateRequestResponse:
     async with point_manager(ses.uid, db) as pm:
         if pm.magic_points < 10:
             raise NoPointError(ses.uid)
+        pm.deduct(10)
 
-    # Gen task id, create memories.
-    content = await req.body()
-    headers = req.headers
-    bg_req = BackgroundRequest(ses.uid, 10, content, headers)
+        tid, worker = await req_dict.new_request(ses.uid, 10)
+        url = conf.infer.base + conf.infer.image_to_video
+        bg.add_task(worker, url, await req.body(), req.headers)
 
-    async with req_dict.lock:
-        if ses.uid not in req_dict.responses_by_uid:
-            req_dict.responses_by_uid[ses.uid] = {}
-        req_dict.responses_by_uid[ses.uid][bg_req.tid] = bg_req
-
-    # Add background task.
-    url = conf.infer.base + conf.infer.image_to_video
-    bg.add_task(forward_to_infer, url, bg_req, db)
-
-    # Pre deduct point prevent excceed limit.
-    pm.deduct(10)
-    return CreateRequestResponse(code=0, msg="ok", tid=bg_req.tid)
+    return CreateRequestResponse(code=0, msg="ok", tid=tid)
 
 
 # API to create a background segment any infer request.
@@ -274,29 +322,18 @@ async def image_to_video(
 async def segment_any(
     req: Request,
     ses: deps.UserSession,
-    db: deps.Database,
-    conf: deps.Config,
-    req_dict: RequestsDict,
     bg: BackgroundTasks,
+    db: Session = Depends(deps.get_db_session),
+    req_dict: BackgroundRequestsDict = Depends(get_requests_dict),
+    conf: config.Config = Depends(config.get_config),
 ) -> CreateRequestResponse:
     async with point_manager(ses.uid, db) as pm:
         if pm.magic_points < 10:
             raise NoPointError(ses.uid)
+        pm.deduct(10)
 
-    # Gen task id, create memories.
-    content = await req.body()
-    headers = req.headers
-    bg_req = BackgroundRequest(ses.uid, 10, content, headers)
+        tid, worker = await req_dict.new_request(ses.uid, 10)
+        url = conf.infer.base + conf.infer.segment_any
+        bg.add_task(worker, url, await req.body(), req.headers)
 
-    async with req_dict.lock:
-        if ses.uid not in req_dict.responses_by_uid:
-            req_dict.responses_by_uid[ses.uid] = {}
-        req_dict.responses_by_uid[ses.uid][bg_req.tid] = bg_req
-
-    # Add background task.
-    url = conf.infer.base + conf.infer.segment_any
-    bg.add_task(forward_to_infer, url, bg_req, db)
-
-    # Pre deduct point prevent excceed limit.
-    pm.deduct(10)
-    return CreateRequestResponse(code=0, msg="ok", tid=bg_req.tid)
+    return CreateRequestResponse(code=0, msg="ok", tid=tid)

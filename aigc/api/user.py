@@ -1,6 +1,6 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from .. import deps, models
-from sqlmodel import select
+from sqlmodel import select, Session
 from datetime import datetime
 
 router = APIRouter(prefix="/user")
@@ -9,7 +9,7 @@ router = APIRouter(prefix="/user")
 @router.get("/info")
 async def user_info(
     ses: deps.UserSession,
-    db: deps.Database,
+    db: Session = Depends(deps.get_db_session),
 ) -> models.user.GetUserInfoResponse:
     userinfo = db.get_one(models.db.User, ses.uid)
     subscription = db.exec(
@@ -22,11 +22,22 @@ async def user_info(
     expires_in: datetime | None = None
     point_in_today: int = 0
     is_member = False
-    for s in subscription:
-        if s.stype == models.db.SubscriptionType.subscription:
-            expires_in = s.expires_in
-            is_member = True
+
+    for s in [
+        s for s in subscription if s.stype == models.db.SubscriptionType.subscription
+    ]:
+        if s.expired == True:
+            continue
+
+        expires_in = s.expires_in
+        is_member = True
         point_in_today += s.remains
+
+    if not is_member:
+        for s in [
+            s for s in subscription if s.stype == models.db.SubscriptionType.trail
+        ]:
+            point_in_today += s.remains
 
     return models.user.GetUserInfoResponse(
         username=userinfo.username,

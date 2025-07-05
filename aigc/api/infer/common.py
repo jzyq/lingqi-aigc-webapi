@@ -28,6 +28,12 @@ class NotDownError(Exception):
         return f"request {self.tid} still in progress."
 
 
+# Exception raise when background request canceled.
+class CancelError(Exception):
+    def __init__(self, tid: str) -> None:
+        self.tid: str = tid
+
+
 # Model use to prase infer API response, just check response code.
 class InferResponse(BaseModel):
     code: int
@@ -133,7 +139,12 @@ class InferRoute(APIRoute):
             except KeyError as exc:
                 logger.info(f"index error: uid or tid '{str(exc)}' no in dict.")
                 return JSONResponse(
-                    content={"codd": 4, "msg": "no such background request."}
+                    content={"code": 4, "msg": "no such background request."}
+                )
+
+            except CancelError as exc:
+                return JSONResponse(
+                    content={"code": 5, "msg": f"task {exc.tid} has been canceled"}
                 )
 
         return route_handler
