@@ -55,6 +55,7 @@ fake_infer_conf: dict[str, Any] = {
     "replace_reference": "foo",
     "segment_any": "bar",
     "image_to_video": "test",
+    "edit_with_prompt": "ewp"
 }
 
 fake_config: dict[str, Any] = {

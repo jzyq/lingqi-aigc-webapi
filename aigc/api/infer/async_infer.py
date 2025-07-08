@@ -347,3 +347,25 @@ async def segment_any(
         bg.add_task(worker, url, await req.body(), req.headers)
 
     return CreateRequestResponse(code=0, msg="ok", tid=tid)
+
+
+# API to create a background edit with prompt infer request.
+@router.post("/edit_with_prompt")
+async def edit_with_prompt(
+    req: Request,
+    ses: deps.UserSession,
+    bg: BackgroundTasks,
+    db: Session = Depends(deps.get_db_session),
+    req_dict: BackgroundRequestsDict = Depends(get_requests_dict),
+    conf: config.Config = Depends(config.get_config),
+) -> CreateRequestResponse:
+    async with point_manager(ses.uid, db) as pm:
+        if pm.magic_points < 10:
+            raise NoPointError(ses.uid)
+        pm.deduct(10)
+
+        tid, worker = await req_dict.new_request(ses.uid, 10)
+        url = conf.infer.base + conf.infer.edit_with_prompt
+        bg.add_task(worker, url, await req.body(), req.headers)
+
+    return CreateRequestResponse(code=0, msg="ok", tid=tid)

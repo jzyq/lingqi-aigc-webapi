@@ -160,6 +160,7 @@ class InferConfig:
     replace_reference: str = "/replace_with_reference"
     segment_any: str = "/segment_any"
     image_to_video: str = "/image_to_video"
+    edit_with_prompt: str = "/edit_with_prompt"
 
     @staticmethod
     def load(toml: dict[str, Any]) -> "InferConfig":
@@ -170,6 +171,7 @@ class InferConfig:
             replace_reference=toml["replace_reference"],
             segment_any=toml["segment_any"],
             image_to_video=toml["image_to_video"],
+            edit_with_prompt=toml["edit_with_prompt"]
         )
 
 
