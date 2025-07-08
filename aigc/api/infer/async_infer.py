@@ -3,7 +3,7 @@ from functools import cache
 from typing import Mapping, TypeAlias
 from collections.abc import Callable, Awaitable
 
-from ... import deps, config, models
+from ... import deps, config
 from pydantic import BaseModel
 import httpx
 from .common import (
@@ -265,16 +265,6 @@ async def replace_with_any(
         if pm.magic_points < 10:
             raise NoPointError(ses.uid)
         pm.deduct(10)
-
-        ilog = models.db.InferenceLog(
-            uid=ses.uid,
-            type=models.db.InferenceType.replace_with_any,
-            state=models.db.InferenceState.waiting,
-        )
-
-        db.add(ilog)
-        db.commit()
-        db.refresh(ilog)
 
         tid, worker = await req_dict.new_request(ses.uid, 10)
         url = conf.infer.base + conf.infer.replace_any
