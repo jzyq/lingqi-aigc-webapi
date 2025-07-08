@@ -1,5 +1,5 @@
 from sqlmodel import SQLModel, Field
-from enum import StrEnum
+from enum import StrEnum, IntEnum
 from datetime import datetime
 
 
@@ -62,3 +62,27 @@ class SubscriptionsRefreshLog(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     refresh_time: datetime
     cnt: int
+
+
+class InferenceType(IntEnum):
+    replace_with_any = 1
+    replace_with_reference = 2
+    segment_any = 3
+    image_to_video = 4
+
+class InferenceState(IntEnum):
+    waiting = 0
+    in_progress = 1
+    down = 2
+    canceled = 3
+
+
+class InferenceLog(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    uid: int
+    type: InferenceType
+    state: InferenceState
+    ctime: datetime = Field(default_factory=datetime.now)
+    utime: datetime = Field(default_factory=datetime.now)
+    request: str = ""
+    response: str = ""

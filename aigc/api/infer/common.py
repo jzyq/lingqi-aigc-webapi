@@ -115,10 +115,10 @@ class InferRoute(APIRoute):
                 return JSONResponse(content={"code": 10, "msg": str(exc)})
 
             # HTTPStatusError will raise when forward to infer srver.
-            except httpx.HTTPStatusError as exc:
+            except httpx.HTTPError as exc:
                 logger.error(f"infer server unavailable, {repr(exc)}")
                 return JSONResponse(
-                    content={"code": 1, "msg": "infer server unavailable"}
+                    content={"code": 1, "msg": f"infer server unavailable, exception: {repr(exc)}"}
                 )
 
             # ValidationError will raise when try parse infer server response body to a json.
