@@ -23,8 +23,8 @@ class MagicPointSubscription(SQLModel, table=True):
     stype: SubscriptionType
     init: int
     remains: int
-    ctime: datetime
-    utime: datetime
+    ctime: datetime = Field(default_factory=datetime.now)
+    utime: datetime = Field(default_factory=datetime.now)
     expires_in: datetime | None = None
     expired: bool = False
 
@@ -69,6 +69,7 @@ class InferenceType(IntEnum):
     replace_with_reference = 2
     segment_any = 3
     image_to_video = 4
+
 
 class InferenceState(IntEnum):
     waiting = 0

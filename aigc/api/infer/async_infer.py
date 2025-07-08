@@ -315,12 +315,13 @@ async def image_to_video(
     req_dict: BackgroundRequestsDict = Depends(get_requests_dict),
     conf: config.Config = Depends(config.get_config),
 ) -> CreateRequestResponse:
+    point = 30
     async with point_manager(ses.uid, db) as pm:
-        if pm.magic_points < 10:
+        if pm.magic_points < point:
             raise NoPointError(ses.uid)
-        pm.deduct(10)
+        pm.deduct(point)
 
-        tid, worker = await req_dict.new_request(ses.uid, 10)
+        tid, worker = await req_dict.new_request(ses.uid, point)
         url = conf.infer.image_to_video
         bg.add_task(worker, url, await req.body(), req.headers)
 
@@ -359,12 +360,21 @@ async def edit_with_prompt(
     req_dict: BackgroundRequestsDict = Depends(get_requests_dict),
     conf: config.Config = Depends(config.get_config),
 ) -> CreateRequestResponse:
-    async with point_manager(ses.uid, db) as pm:
-        if pm.magic_points < 10:
-            raise NoPointError(ses.uid)
-        pm.deduct(10)
+    normal_mode_point = 15
+    enhance_mode_point = 20
 
-        tid, worker = await req_dict.new_request(ses.uid, 10)
+    req_body = await req.json()
+    if "enhance" in req_body and req_body["enhance"] == True:
+        point = enhance_mode_point
+    else:
+        point = normal_mode_point
+
+    async with point_manager(ses.uid, db) as pm:
+        if pm.magic_points < point:
+            raise NoPointError(ses.uid)
+        pm.deduct(point)
+
+        tid, worker = await req_dict.new_request(ses.uid, point)
         url = conf.infer.base + conf.infer.edit_with_prompt
         bg.add_task(worker, url, await req.body(), req.headers)
 
