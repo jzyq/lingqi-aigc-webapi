@@ -321,7 +321,7 @@ async def image_to_video(
         pm.deduct(10)
 
         tid, worker = await req_dict.new_request(ses.uid, 10)
-        url = conf.infer.base + conf.infer.image_to_video
+        url = conf.infer.image_to_video
         bg.add_task(worker, url, await req.body(), req.headers)
 
     return CreateRequestResponse(code=0, msg="ok", tid=tid)
