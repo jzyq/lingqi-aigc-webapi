@@ -69,20 +69,43 @@ class InferenceType(IntEnum):
     replace_with_reference = 2
     segment_any = 3
     image_to_video = 4
+    edit_with_prompt = 5
+
+    def __str__(self) -> str:
+        names = {
+            InferenceType.replace_with_any: "replace any",
+            InferenceType.replace_with_reference: "replace with reference",
+            InferenceType.segment_any: "segment any",
+            InferenceType.image_to_video: "image to video",
+            InferenceType.edit_with_prompt: "edit with prompt"
+        }
+        return names[self]
 
 
 class InferenceState(IntEnum):
     waiting = 0
     in_progress = 1
     down = 2
-    canceled = 3
+    failed = 3
+    canceled = 4
+
+    def __str__(self) -> str:
+        names = {
+            InferenceState.waiting: "waiting",
+            InferenceState.in_progress: "in progress",
+            InferenceState.down: "down",
+            InferenceState.failed: "failed",
+            InferenceState.canceled: "canceled",
+        }
+        return names[self]
 
 
 class InferenceLog(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
-    uid: int
+    uid: int = Field(index=True)
+    tid: str = Field(index=True)
     type: InferenceType
-    state: InferenceState
+    state: InferenceState = InferenceState.waiting
     ctime: datetime = Field(default_factory=datetime.now)
     utime: datetime = Field(default_factory=datetime.now)
     request: str = ""

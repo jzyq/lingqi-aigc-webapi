@@ -1,13 +1,22 @@
-from fastapi import APIRouter, Depends, Response, Request, BackgroundTasks
+from fastapi import (
+    APIRouter,
+    Depends,
+    Response,
+    Request,
+    BackgroundTasks,
+    HTTPException,
+)
 from functools import cache
 from typing import Mapping, TypeAlias
 from collections.abc import Callable, Awaitable
 
-from ... import deps, config
+from ... import deps, config, sessions, models
 from pydantic import BaseModel
 import httpx
 from .common import (
+    get_current_subscription,
     point_manager,
+    PointManager,
     NoPointError,
     InferResponse,
     InferRoute,
@@ -19,7 +28,10 @@ from dataclasses import dataclass, field
 import secrets
 from loguru import logger
 from http import HTTPStatus
-from sqlmodel import Session
+from sqlmodel import Session, select
+from sqlalchemy import Engine
+from datetime import datetime
+import json
 
 
 STATE_WAITING: str = "waiting"
@@ -57,7 +69,9 @@ class BackgroundRequest:
     cond: asyncio.Condition = field(default_factory=asyncio.Condition, init=False)
 
 
-RequestFunc: TypeAlias = Callable[[str, bytes, Mapping[str, str]], Awaitable[None]]
+RequestFunc: TypeAlias = Callable[
+    [str, bytes, Mapping[str, str], Engine], Awaitable[None]
+]
 
 
 # TODO: need to remove expired request data.
@@ -81,10 +95,18 @@ class BackgroundRequestsDict:
             self.responses_by_uid[uid][tid] = task
             self.cond.notify_all()
 
-        async def worker(url: str, content: bytes, headers: Mapping[str, str]) -> None:
-            ses = Session(deps.get_db_engine(config.get_config().database.file))
+        async def worker(
+            url: str, content: bytes, headers: Mapping[str, str], db: Engine
+        ) -> None:
+            ses = Session(db)
+            ilog = ses.exec(
+                select(models.db.InferenceLog).where(models.db.InferenceLog.tid == tid)
+            ).one()
 
             try:
+                # This part, wait this task be the first at the queue,
+                # or canceled, both will break waiting.
+                # If cancel, it will raise a CancelError.
                 async with self.cond:
                     logger.debug(f"infer request {tid} waiting")
                     await self.cond.wait_for(
@@ -94,7 +116,14 @@ class BackgroundRequestsDict:
                     if task not in self.request_list:
                         raise CancelError(tid)
 
+                # From now, task can go on.
+                # Update inference log first.
                 logger.debug(f"infer request {tid} in progress")
+                ilog.state = models.db.InferenceState.in_progress
+                ilog.request = content.decode()
+                ilog.utime = datetime.now()
+                ses.add(ilog)
+                ses.commit()
 
                 # Send infer request.
                 async with httpx.AsyncClient(timeout=None) as client:
@@ -109,6 +138,12 @@ class BackgroundRequestsDict:
                         pm.recharge(point)
                         logger.info("inference srv not success, recharge point.")
 
+                ilog.state = models.db.InferenceState.down
+                ilog.response = resp.content.decode()
+                ilog.utime = datetime.now()
+                ses.add(ilog)
+                ses.commit()
+
                 # Set infer result.
                 async with task.cond:
                     task.response = Response(content=resp.content, headers=resp.headers)
@@ -116,6 +151,14 @@ class BackgroundRequestsDict:
 
             except Exception as exc:
                 logger.error(f"background request encounter error, {str(exc)}")
+
+                if isinstance(exc, CancelError):
+                    ilog.state = models.db.InferenceState.canceled
+                else:
+                    ilog.state = models.db.InferenceState.failed
+                ilog.utime = datetime.now()
+                ses.add(ilog)
+                ses.commit()
 
                 # If have exception, recharge point as well.
                 async with point_manager(uid, ses) as pm:
@@ -132,6 +175,7 @@ class BackgroundRequestsDict:
                     if task in self.request_list:
                         self.request_list.remove(task)
                     self.cond.notify_all()
+
                 logger.debug(f"infer request {tid} down.")
 
         return (tid, worker)
@@ -144,6 +188,17 @@ def get_requests_dict() -> BackgroundRequestsDict:
     return BackgroundRequestsDict()
 
 
+# A dependence function to get a new point manager.
+async def get_point_manager(
+    ses: sessions.Session = Depends(deps.get_user_session),
+    dbses: Session = Depends(deps.get_db_session),
+) -> PointManager:
+
+    sub = await get_current_subscription(ses.uid, dbses)
+    mgr = PointManager(sub, dbses)
+    return mgr
+
+
 # Define router
 router = APIRouter(prefix="/async/infer", route_class=InferRoute)
 
@@ -153,6 +208,7 @@ router = APIRouter(prefix="/async/infer", route_class=InferRoute)
 async def get_req_state(
     tid: str,
     ses: deps.UserSession,
+    db: Engine = Depends(deps.get_db_engine),
     req_dict: BackgroundRequestsDict = Depends(get_requests_dict),
 ) -> GetStateResponse:
 
@@ -160,20 +216,29 @@ async def get_req_state(
         code=0, msg="ok", tid=tid, index=0, state=STATE_IN_PROGRESS
     )
 
-    async with req_dict.lock:
-        infer_request = req_dict.responses_by_uid[ses.uid][tid]
-
-        try:
+    try:
+        async with req_dict.lock:
+            infer_request = req_dict.responses_by_uid[ses.uid][tid]
             idx = req_dict.request_list.index(infer_request)
             if idx != 0:
                 response.index = idx
                 response.state = STATE_WAITING
                 return response
-        except ValueError:
-            pass
+            if infer_request.exception or infer_request.response:
+                response.state = STATE_DOWN
 
-        if infer_request.exception or infer_request.response:
-            response.state = STATE_DOWN
+    except (ValueError, KeyError):
+        with Session(db) as dbsession:
+            ilog = dbsession.exec(
+                select(models.db.InferenceLog)
+                .where(models.db.InferenceLog.uid == ses.uid)
+                .where(models.db.InferenceLog.tid == tid)
+            ).one_or_none()
+
+            if ilog is None:
+                raise KeyError()
+            
+            response.state = str(ilog.state)
 
     return response
 
@@ -255,20 +320,33 @@ async def cancel_waiting_request(
 @router.post("/replace_any")
 async def replace_with_any(
     req: Request,
-    ses: deps.UserSession,
     bg: BackgroundTasks,
-    db: Session = Depends(deps.get_db_session),
+    ses: sessions.Session = Depends(deps.get_user_session),
+    pm: PointManager = Depends(get_point_manager),
+    db: Engine = Depends(deps.get_db_engine),
     req_dict: BackgroundRequestsDict = Depends(get_requests_dict),
     conf: config.Config = Depends(config.get_config),
 ) -> CreateRequestResponse:
-    async with point_manager(ses.uid, db) as pm:
-        if pm.magic_points < 10:
-            raise NoPointError(ses.uid)
-        pm.deduct(10)
 
-        tid, worker = await req_dict.new_request(ses.uid, 10)
-        url = conf.infer.base + conf.infer.replace_any
-        bg.add_task(worker, url, await req.body(), req.headers)
+    point = 10
+    if pm.magic_points < point:
+        raise NoPointError(ses.uid)
+    pm.deduct(point)
+
+    tid, worker = await req_dict.new_request(ses.uid, point)
+
+    ilog = models.db.InferenceLog(
+        uid=ses.uid,
+        tid=tid,
+        type=models.db.InferenceType.replace_with_any,
+    )
+
+    with Session(db) as cursor:
+        cursor.add(ilog)
+        cursor.commit()
+
+    url = conf.infer.base + conf.infer.replace_any
+    bg.add_task(worker, url, await req.body(), req.headers, db)
 
     return CreateRequestResponse(code=0, msg="ok", tid=tid)
 
@@ -279,18 +357,30 @@ async def replace_with_reference(
     req: Request,
     ses: deps.UserSession,
     bg: BackgroundTasks,
-    db: Session = Depends(deps.get_db_session),
+    db: Engine = Depends(deps.get_db_engine),
+    pm: PointManager = Depends(get_point_manager),
     req_dict: BackgroundRequestsDict = Depends(get_requests_dict),
     conf: config.Config = Depends(config.get_config),
 ) -> CreateRequestResponse:
-    async with point_manager(ses.uid, db) as pm:
-        if pm.magic_points < 10:
-            raise NoPointError(ses.uid)
-        pm.deduct(10)
 
-        tid, worker = await req_dict.new_request(ses.uid, 10)
-        url = conf.infer.base + conf.infer.replace_reference
-        bg.add_task(worker, url, await req.body(), req.headers)
+    if pm.magic_points < 10:
+        raise NoPointError(ses.uid)
+    pm.deduct(10)
+
+    tid, worker = await req_dict.new_request(ses.uid, 10)
+
+    ilog = models.db.InferenceLog(
+        uid=ses.uid,
+        tid=tid,
+        type=models.db.InferenceType.replace_with_reference,
+    )
+
+    with Session(db) as cursor:
+        cursor.add(ilog)
+        cursor.commit()
+
+    url = conf.infer.base + conf.infer.replace_reference
+    bg.add_task(worker, url, await req.body(), req.headers, db)
 
     return CreateRequestResponse(code=0, msg="ok", tid=tid)
 
@@ -301,19 +391,31 @@ async def image_to_video(
     req: Request,
     ses: deps.UserSession,
     bg: BackgroundTasks,
-    db: Session = Depends(deps.get_db_session),
+    db: Engine = Depends(deps.get_db_engine),
+    pm: PointManager = Depends(get_point_manager),
     req_dict: BackgroundRequestsDict = Depends(get_requests_dict),
     conf: config.Config = Depends(config.get_config),
 ) -> CreateRequestResponse:
     point = 30
-    async with point_manager(ses.uid, db) as pm:
-        if pm.magic_points < point:
-            raise NoPointError(ses.uid)
-        pm.deduct(point)
 
-        tid, worker = await req_dict.new_request(ses.uid, point)
-        url = conf.infer.image_to_video
-        bg.add_task(worker, url, await req.body(), req.headers)
+    if pm.magic_points < point:
+        raise NoPointError(ses.uid)
+    pm.deduct(point)
+
+    tid, worker = await req_dict.new_request(ses.uid, point)
+
+    ilog = models.db.InferenceLog(
+        uid=ses.uid,
+        tid=tid,
+        type=models.db.InferenceType.image_to_video,
+    )
+
+    with Session(db) as cursor:
+        cursor.add(ilog)
+        cursor.commit()
+
+    url = conf.infer.image_to_video
+    bg.add_task(worker, url, await req.body(), req.headers, db)
 
     return CreateRequestResponse(code=0, msg="ok", tid=tid)
 
@@ -324,18 +426,32 @@ async def segment_any(
     req: Request,
     ses: deps.UserSession,
     bg: BackgroundTasks,
-    db: Session = Depends(deps.get_db_session),
+    db: Engine = Depends(deps.get_db_engine),
+    pm: PointManager = Depends(get_point_manager),
     req_dict: BackgroundRequestsDict = Depends(get_requests_dict),
     conf: config.Config = Depends(config.get_config),
 ) -> CreateRequestResponse:
-    async with point_manager(ses.uid, db) as pm:
-        if pm.magic_points < 10:
-            raise NoPointError(ses.uid)
-        pm.deduct(10)
 
-        tid, worker = await req_dict.new_request(ses.uid, 10)
-        url = conf.infer.base + conf.infer.segment_any
-        bg.add_task(worker, url, await req.body(), req.headers)
+    point = 1
+
+    if pm.magic_points < point:
+        raise NoPointError(ses.uid)
+    pm.deduct(point)
+
+    tid, worker = await req_dict.new_request(ses.uid, point)
+
+    ilog = models.db.InferenceLog(
+        uid=ses.uid,
+        tid=tid,
+        type=models.db.InferenceType.segment_any,
+    )
+
+    with Session(db) as cursor:
+        cursor.add(ilog)
+        cursor.commit()
+
+    url = conf.infer.base + conf.infer.segment_any
+    bg.add_task(worker, url, await req.body(), req.headers, db)
 
     return CreateRequestResponse(code=0, msg="ok", tid=tid)
 
@@ -346,26 +462,38 @@ async def edit_with_prompt(
     req: Request,
     ses: deps.UserSession,
     bg: BackgroundTasks,
-    db: Session = Depends(deps.get_db_session),
+    db: Engine = Depends(deps.get_db_engine),
+    pm: PointManager = Depends(get_point_manager),
     req_dict: BackgroundRequestsDict = Depends(get_requests_dict),
     conf: config.Config = Depends(config.get_config),
 ) -> CreateRequestResponse:
-    normal_mode_point = 15
-    enhance_mode_point = 20
+    normal_mode_point = 10
+    enhance_mode_point = 15
 
-    req_body = await req.json()
-    if "enhance" in req_body and req_body["enhance"] == True:
-        point = enhance_mode_point
-    else:
-        point = normal_mode_point
+    try:
+        req_body = await req.json()
+        if "enhance" in req_body and req_body["enhance"] == True:
+            point = enhance_mode_point
+        else:
+            point = normal_mode_point
+    except json.JSONDecodeError:
+        raise HTTPException(422, detail="must have request body")
 
-    async with point_manager(ses.uid, db) as pm:
-        if pm.magic_points < point:
-            raise NoPointError(ses.uid)
-        pm.deduct(point)
+    if pm.magic_points < point:
+        raise NoPointError(ses.uid)
+    pm.deduct(point)
 
-        tid, worker = await req_dict.new_request(ses.uid, point)
-        url = conf.infer.base + conf.infer.edit_with_prompt
-        bg.add_task(worker, url, await req.body(), req.headers)
+    tid, worker = await req_dict.new_request(ses.uid, point)
+
+    ilog = models.db.InferenceLog(
+        uid=ses.uid, tid=tid, type=models.db.InferenceType.edit_with_prompt
+    )
+
+    with Session(db) as cursor:
+        cursor.add(ilog)
+        cursor.commit()
+
+    url = conf.infer.base + conf.infer.edit_with_prompt
+    bg.add_task(worker, url, await req.body(), req.headers, db)
 
     return CreateRequestResponse(code=0, msg="ok", tid=tid)
