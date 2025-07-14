@@ -36,7 +36,7 @@ def get_rdb(req: Request) -> redis.Redis:
 
 def get_auth_token(authorization: HeaderField) -> str:
     auth_type, token = authorization.split(" ")
-    if auth_type != "bearer" or token == "":
+    if auth_type not in ["bearer", "Bearer"]:
         raise HTTPException(status_code=401, detail="no valid authorization to access.")
     return token
 

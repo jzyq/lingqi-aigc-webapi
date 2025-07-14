@@ -1,0 +1,1 @@
+uvicorn devapp:app --reload --reload-dir ../aigc --reload-dir ./
