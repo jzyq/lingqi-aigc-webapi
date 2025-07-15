@@ -63,3 +63,10 @@ def get_wxclient(
     conf: config.Config = Depends(config.get_config),
 ) -> wx.client.WxClient:
     return wx.client.new_client(conf.wechat.secrets)
+
+
+def get_main_page_data() -> models.mainpage.MainPageData:
+    path = "mainpage/data.json"
+    with open(path, 'r') as fp:
+        data = models.mainpage.MainPageData.model_validate_json(fp.read())
+    return data

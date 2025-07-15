@@ -79,7 +79,7 @@ async def get_inference_history(
         result.history.append(h)
     return APIResponse(data=result)
 
-
+# TODO need to handle key error.
 @router.get("/detail/{tid}")
 async def get_inference_detail(
     tid: str,

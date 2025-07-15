@@ -1,1 +1,1 @@
-from . import wx, user, payment, infer, gallery  # type: ignore
+from . import wx, user, payment, infer, gallery, main  # type: ignore

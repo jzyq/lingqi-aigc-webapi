@@ -30,6 +30,7 @@ app.dependency_overrides[config.get_config] = lambda: conf
 app.dependency_overrides[deps.get_db_engine] = lambda: engine
 app.dependency_overrides[deps.get_rdb] = lambda: rdb
 
+app.include_router(api.main.router)
 app.include_router(api.infer.router)
 app.include_router(api.user.router)
 app.include_router(api.gallery.router)

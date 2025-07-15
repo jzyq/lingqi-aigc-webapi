@@ -1,6 +1,6 @@
 from sqlmodel import create_engine, SQLModel
 from sqlalchemy import Engine
-from . import user, payment, db  # type: ignore
+from . import user, payment, db, mainpage  # type: ignore
 
 
 def initialize_database_io(db_file_name: str) -> Engine:
