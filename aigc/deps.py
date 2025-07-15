@@ -66,7 +66,7 @@ def get_wxclient(
 
 
 def get_main_page_data() -> models.mainpage.MainPageData:
-    path = "mainpage/data.json"
+    path = "mainpage/config.json"
     with open(path, 'r') as fp:
         data = models.mainpage.MainPageData.model_validate_json(fp.read())
     return data
