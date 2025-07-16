@@ -237,7 +237,7 @@ async def get_req_state(
 
             if ilog is None:
                 raise KeyError()
-            
+
             response.state = str(ilog.state)
 
     return response
@@ -326,7 +326,7 @@ async def replace_with_any(
     db: Engine = Depends(deps.get_db_engine),
     req_dict: BackgroundRequestsDict = Depends(get_requests_dict),
     conf: config.Config = Depends(config.get_config),
-    translator: prompt_translate.ZhipuaiClient = Depends(deps.get_translator)
+    translator: prompt_translate.ZhipuaiClient = Depends(deps.get_translator),
 ) -> CreateRequestResponse:
 
     point = 10
@@ -347,7 +347,8 @@ async def replace_with_any(
         cursor.commit()
 
     body = await req.json()
-    body["text_prompt"] = translator.translate(body["text_prompt"])
+    if "text_prompt" in body:
+        body["text_prompt"] = translator.translate(body["text_prompt"])
 
     url = conf.infer.base + conf.infer.replace_any
     bg.add_task(worker, url, json.dumps(body).encode(), req.headers, db)
@@ -365,7 +366,7 @@ async def replace_with_reference(
     pm: PointManager = Depends(get_point_manager),
     req_dict: BackgroundRequestsDict = Depends(get_requests_dict),
     conf: config.Config = Depends(config.get_config),
-    translator: prompt_translate.ZhipuaiClient = Depends(deps.get_translator)
+    translator: prompt_translate.ZhipuaiClient = Depends(deps.get_translator),
 ) -> CreateRequestResponse:
 
     if pm.magic_points < 10:
@@ -385,7 +386,8 @@ async def replace_with_reference(
         cursor.commit()
 
     body = await req.json()
-    body["text_prompt"] = translator.translate(body["text_prompt"])
+    if "text_prompt" in body:
+        body["text_prompt"] = translator.translate(body["text_prompt"])
 
     url = conf.infer.base + conf.infer.replace_reference
     bg.add_task(worker, url, json.dumps(body).encode(), req.headers, db)
@@ -403,7 +405,7 @@ async def image_to_video(
     pm: PointManager = Depends(get_point_manager),
     req_dict: BackgroundRequestsDict = Depends(get_requests_dict),
     conf: config.Config = Depends(config.get_config),
-    translator: prompt_translate.ZhipuaiClient = Depends(deps.get_translator)
+    translator: prompt_translate.ZhipuaiClient = Depends(deps.get_translator),
 ) -> CreateRequestResponse:
     point = 30
 
@@ -424,7 +426,8 @@ async def image_to_video(
         cursor.commit()
 
     body = await req.json()
-    body["text_prompt"] = translator.translate(body["text_prompt"])
+    if "text_prompt" in body:
+        body["text_prompt"] = translator.translate(body["text_prompt"])
 
     url = conf.infer.image_to_video
     bg.add_task(worker, url, json.dumps(body).encode(), req.headers, db)
@@ -442,7 +445,7 @@ async def segment_any(
     pm: PointManager = Depends(get_point_manager),
     req_dict: BackgroundRequestsDict = Depends(get_requests_dict),
     conf: config.Config = Depends(config.get_config),
-    translator: prompt_translate.ZhipuaiClient = Depends(deps.get_translator)
+    translator: prompt_translate.ZhipuaiClient = Depends(deps.get_translator),
 ) -> CreateRequestResponse:
 
     point = 1
@@ -464,7 +467,8 @@ async def segment_any(
         cursor.commit()
 
     body = await req.json()
-    body["text_prompt"] = translator.translate(body["text_prompt"])
+    if "text_prompt" in body:
+        body["text_prompt"] = translator.translate(body["text_prompt"])
 
     url = conf.infer.base + conf.infer.segment_any
     bg.add_task(worker, url, json.dumps(body).encode(), req.headers, db)
@@ -482,7 +486,7 @@ async def edit_with_prompt(
     pm: PointManager = Depends(get_point_manager),
     req_dict: BackgroundRequestsDict = Depends(get_requests_dict),
     conf: config.Config = Depends(config.get_config),
-    translator: prompt_translate.ZhipuaiClient = Depends(deps.get_translator)
+    translator: prompt_translate.ZhipuaiClient = Depends(deps.get_translator),
 ) -> CreateRequestResponse:
     normal_mode_point = 10
     enhance_mode_point = 15
@@ -511,7 +515,8 @@ async def edit_with_prompt(
         cursor.commit()
 
     body = await req.json()
-    body["text_prompt"] = translator.translate(body["text_prompt"])
+    if "text_prompt" in body:
+        body["text_prompt"] = translator.translate(body["text_prompt"])
 
     url = conf.infer.base + conf.infer.edit_with_prompt
     bg.add_task(worker, url, json.dumps(body).encode(), req.headers, db)
