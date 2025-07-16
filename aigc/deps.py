@@ -4,7 +4,7 @@ from fastapi import Depends, Request, FastAPI, HTTPException, Header
 from sqlmodel import Session
 from sqlalchemy import Engine
 import redis.asyncio as redis
-from . import sessions, config, wx, models
+from . import sessions, config, wx, models, prompt_translate
 
 from functools import cache
 
@@ -67,6 +67,12 @@ def get_wxclient(
 
 def get_main_page_data() -> models.mainpage.MainPageData:
     path = "mainpage/config.json"
-    with open(path, 'r') as fp:
+    with open(path, "r") as fp:
         data = models.mainpage.MainPageData.model_validate_json(fp.read())
     return data
+
+
+def get_translator(
+    conf: config.Config = Depends(config.get_config),
+) -> prompt_translate.ZhipuaiClient:
+    return prompt_translate.ZhipuaiClient(conf.prompt_translate.api_key)

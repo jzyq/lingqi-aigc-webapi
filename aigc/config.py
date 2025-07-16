@@ -171,8 +171,17 @@ class InferConfig:
             replace_reference=toml["replace_reference"],
             segment_any=toml["segment_any"],
             image_to_video=toml["image_to_video"],
-            edit_with_prompt=toml["edit_with_prompt"]
+            edit_with_prompt=toml["edit_with_prompt"],
         )
+
+
+@dataclass
+class PromptTranslate:
+    api_key: str = ""
+
+    @staticmethod
+    def load(toml: dict[str, Any]) -> "PromptTranslate":
+        return PromptTranslate(api_key=toml["api_key"])
 
 
 # Just read this config when needed.
@@ -182,8 +191,9 @@ class Config:
     redis: RedisConfig = field(default_factory=RedisConfig)
     database: DatabaseConfig = field(default_factory=DatabaseConfig)
     wechat: WechatConfig = field(default_factory=WechatConfig)
-    magic_points: MagicPointConfig =field(default_factory=MagicPointConfig)
+    magic_points: MagicPointConfig = field(default_factory=MagicPointConfig)
     infer: InferConfig = field(default_factory=InferConfig)
+    prompt_translate: PromptTranslate = field(default_factory=PromptTranslate)
 
     @staticmethod
     def load(toml: dict[str, Any]) -> "Config":
@@ -194,6 +204,7 @@ class Config:
             wechat=WechatConfig.load(toml["wechat"]),
             magic_points=MagicPointConfig.load(toml["magic_points"]),
             infer=InferConfig.load(toml["infer"]),
+            prompt_translate=PromptTranslate.load(toml["prompt_translate"]),
         )
 
 

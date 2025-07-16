@@ -58,6 +58,10 @@ fake_infer_conf: dict[str, Any] = {
     "edit_with_prompt": "ewp"
 }
 
+fake_infer_prompt_translate: dict[str, Any] = {
+    "api_key": "abcdefg"
+}
+
 fake_config: dict[str, Any] = {
     "web": fake_web_conf,
     "redis": fake_redis_conf,
@@ -65,6 +69,7 @@ fake_config: dict[str, Any] = {
     "wechat": fake_wechat_conf,
     "magic_points": fake_magic_point_conf,
     "infer": fake_infer_conf,
+    "prompt_translate": fake_infer_prompt_translate
 }
 
 
@@ -123,6 +128,10 @@ class TestConfig(TestCase):
     def test_load_infer_conf(self):
         conf = config.InferConfig.load(fake_infer_conf)
         self.assertEqual(asdict(conf), fake_infer_conf)
+
+    def test_load_prompt_translate(self) -> None:
+        conf = config.PromptTranslate.load(fake_infer_prompt_translate)
+        self.assertEqual(asdict(conf), fake_infer_prompt_translate)
 
     @mock.patch("builtins.open")
     def test_load_config(self, mocker: mock.MagicMock):
