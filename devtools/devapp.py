@@ -1,5 +1,5 @@
 from fastapi import FastAPI, Depends
-from aigc import config, deps, api, models, sessions
+from aigc import config, deps, api, models, sessions, prompt_translate
 from sqlmodel import create_engine, SQLModel, Session, select
 from sqlalchemy.pool import StaticPool
 from fakeredis import FakeAsyncRedis
@@ -23,12 +23,23 @@ SQLModel.metadata.create_all(engine)
 rdb = FakeAsyncRedis()
 
 
+# Mock translator client
+class FakeTranslator(prompt_translate.ZhipuaiClient):
+
+    def __init__(self) -> None:
+        pass
+
+    def translate(self, text: str) -> str:
+        return text
+
+
 # Setup dev app.
 app = FastAPI()
 
 app.dependency_overrides[config.get_config] = lambda: conf
 app.dependency_overrides[deps.get_db_engine] = lambda: engine
 app.dependency_overrides[deps.get_rdb] = lambda: rdb
+app.dependency_overrides[deps.get_translator] = lambda: FakeTranslator()
 
 app.include_router(api.main.router)
 app.include_router(api.infer.router)

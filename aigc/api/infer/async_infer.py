@@ -7,7 +7,7 @@ from fastapi import (
     HTTPException,
 )
 from functools import cache
-from typing import Mapping, TypeAlias
+from typing import TypeAlias
 from collections.abc import Callable, Awaitable
 
 from ... import deps, config, sessions, models, prompt_translate
@@ -70,7 +70,7 @@ class BackgroundRequest:
 
 
 RequestFunc: TypeAlias = Callable[
-    [str, bytes, Mapping[str, str], Engine], Awaitable[None]
+    [str, bytes, Engine], Awaitable[None]
 ]
 
 
@@ -96,7 +96,7 @@ class BackgroundRequestsDict:
             self.cond.notify_all()
 
         async def worker(
-            url: str, content: bytes, headers: Mapping[str, str], db: Engine
+            url: str, content: bytes, db: Engine
         ) -> None:
             ses = Session(db)
             ilog = ses.exec(
@@ -127,7 +127,7 @@ class BackgroundRequestsDict:
 
                 # Send infer request.
                 async with httpx.AsyncClient(timeout=None) as client:
-                    resp = await client.post(url, content=content, headers=headers)
+                    resp = await client.post(url, content=content, headers={'content-type': "application/json"})
                     logger.debug(f"infer server response request {tid}")
 
                 # Check response, if infer result code not equal to 0, give point back.
@@ -351,7 +351,7 @@ async def replace_with_any(
         body["text_prompt"] = translator.translate(body["text_prompt"])
 
     url = conf.infer.base + conf.infer.replace_any
-    bg.add_task(worker, url, json.dumps(body).encode(), req.headers, db)
+    bg.add_task(worker, url, json.dumps(body).encode(), db)
 
     return CreateRequestResponse(code=0, msg="ok", tid=tid)
 
@@ -390,7 +390,7 @@ async def replace_with_reference(
         body["text_prompt"] = translator.translate(body["text_prompt"])
 
     url = conf.infer.base + conf.infer.replace_reference
-    bg.add_task(worker, url, json.dumps(body).encode(), req.headers, db)
+    bg.add_task(worker, url, json.dumps(body).encode(), db)
 
     return CreateRequestResponse(code=0, msg="ok", tid=tid)
 
@@ -430,7 +430,7 @@ async def image_to_video(
         body["text_prompt"] = translator.translate(body["text_prompt"])
 
     url = conf.infer.image_to_video
-    bg.add_task(worker, url, json.dumps(body).encode(), req.headers, db)
+    bg.add_task(worker, url, json.dumps(body).encode(), db)
 
     return CreateRequestResponse(code=0, msg="ok", tid=tid)
 
@@ -471,7 +471,7 @@ async def segment_any(
         body["text_prompt"] = translator.translate(body["text_prompt"])
 
     url = conf.infer.base + conf.infer.segment_any
-    bg.add_task(worker, url, json.dumps(body).encode(), req.headers, db)
+    bg.add_task(worker, url, json.dumps(body).encode(), db)
 
     return CreateRequestResponse(code=0, msg="ok", tid=tid)
 
@@ -519,6 +519,6 @@ async def edit_with_prompt(
         body["text_prompt"] = translator.translate(body["text_prompt"])
 
     url = conf.infer.base + conf.infer.edit_with_prompt
-    bg.add_task(worker, url, json.dumps(body).encode(), req.headers, db)
+    bg.add_task(worker, url, json.dumps(body).encode(), db)
 
     return CreateRequestResponse(code=0, msg="ok", tid=tid)
