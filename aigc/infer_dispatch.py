@@ -325,7 +325,3 @@ class Server:
                     tid=new_inference.tid, uid=new_inference.uid, url=new_inference.url
                 )
                 self._rdb.xack(STREAM_NAME, READGROUP_NAME, mid)  # type: ignore
-
-
-if __name__ == "__main__":
-    pass

@@ -8,3 +8,4 @@ conda-forge::redis-py
 conda-forge::loguru
 conda-forge::httpx
 conda-forge::python-dateutil
+mysql-connector-python
