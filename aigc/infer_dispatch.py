@@ -250,51 +250,46 @@ class Server:
             inference.state = models.db.InferenceState.in_progress
             inference.utime = datetime.now()
             session.commit()
-            session.refresh(inference)
 
-        try:
-            with httpx.Client(timeout=None) as client:
-                resp = client.post(url=url, json=json.loads(inference.request))
-                resp.raise_for_status()
+            try:
+                with httpx.Client(timeout=None) as client:
+                    resp = client.post(url=url, json=json.loads(inference.request))
+                    resp.raise_for_status()
 
-                with sqlmodel.Session(self._db) as session:
                     inference.response = resp.content.decode()
                     inference.state = models.db.InferenceState.down
                     inference.utime = datetime.now()
-                    session.add(inference)
                     session.commit()
 
-            update_message = InferenceStateUpdateMessage(
-                tid=tid, uid=uid, state=models.db.InferenceState.down
-            )
-            self._rdb.publish(  # type: ignore
-                INFERENCE_STATE_CHANNEL, update_message.model_dump_json()
-            )
-            logger.info(f"inference {tid} complete.")
+                update_message = InferenceStateUpdateMessage(
+                    tid=tid, uid=uid, state=models.db.InferenceState.down
+                )
+                self._rdb.publish(  # type: ignore
+                    INFERENCE_STATE_CHANNEL, update_message.model_dump_json()
+                )
+                logger.info(f"inference {tid} complete.")
 
-        except httpx.HTTPError as e:
-            response = json.dumps({"code": 1, "msg": f"inference error, {str(e)}"})
+            except httpx.HTTPError as e:
+                response = json.dumps({"code": 1, "msg": f"inference error, {str(e)}"})
 
-            with sqlmodel.Session(self._db) as session:
                 inference.response = response
                 inference.state = models.db.InferenceState.failed
                 inference.utime = datetime.now()
-                session.add(inference)
                 session.commit()
 
-            with current_subscription(inference.uid, self._db) as subscription:
-                subscription.remains += inference.point
+                with current_subscription(inference.uid, self._db) as subscription:
+                    subscription.remains += inference.point
 
-            update_message = InferenceStateUpdateMessage(
-                tid=tid, uid=uid, state=models.db.InferenceState.failed
-            )
-            self._rdb.publish(  # type: ignore
-                INFERENCE_STATE_CHANNEL, update_message.model_dump_json()
-            )
+                update_message = InferenceStateUpdateMessage(
+                    tid=tid, uid=uid, state=models.db.InferenceState.failed
+                )
+                self._rdb.publish(  # type: ignore
+                    INFERENCE_STATE_CHANNEL, update_message.model_dump_json()
+                )
 
-            logger.error(
-                f"inference {tid} error, {str(e)}, recharge point {inference.point}"
-            )
+                logger.error(
+                    f"inference {tid} error, {str(e)}, recharge point {inference.point}"
+                )
 
     def serve_forever(self) -> None:
         try:

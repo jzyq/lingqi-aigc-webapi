@@ -1,7 +1,8 @@
 from sqlmodel import SQLModel, Field
 from enum import StrEnum, IntEnum
 from datetime import datetime
-
+from sqlalchemy.dialects.mysql import LONGTEXT
+from sqlalchemy import Column
 
 class SubscriptionType(StrEnum):
     trail = "trail"
@@ -109,5 +110,5 @@ class InferenceLog(SQLModel, table=True):
     state: InferenceState = InferenceState.waiting
     ctime: datetime = Field(default_factory=datetime.now)
     utime: datetime = Field(default_factory=datetime.now)
-    request: str = ""
-    response: str = ""
+    request: str =  Field(default="", sa_column=Column(LONGTEXT))
+    response: str = Field(default="", sa_column=Column(LONGTEXT))
