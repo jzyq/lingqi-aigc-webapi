@@ -1,1 +1,0 @@
-uvicorn devtools.devapp:app --reload --reload-dir ./aigc --reload-dir ./devtools

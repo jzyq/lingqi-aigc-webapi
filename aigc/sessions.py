@@ -29,15 +29,13 @@ async def create_new_session(rdb: redis.Redis, uid: int, nickname: str) -> str:
     dt = datetime.now()
     ttl = config.Config().web.session_ttl
     session = Session(
-        uid=uid,
-        nickname=nickname,
-        login_time=dt,
-        expires=dt + timedelta(seconds=ttl))
+        uid=uid, nickname=nickname, login_time=dt, expires=dt + timedelta(seconds=ttl)
+    )
     token = generate_new_token(TOKEN_LEN)
 
     p = rdb.pipeline()
     await p.set(SESSION_KEY.format(token), session.model_dump_json(), ex=ttl)
-    p.hset(name=UID_SESSION_MAP_KEY, key=str(uid), value=token)
+    p.hset(name=UID_SESSION_MAP_KEY, key=str(uid), value=token)  # type: ignore
     await p.execute()
 
     return token
@@ -66,7 +64,7 @@ async def refresh_session(rdb: redis.Redis, token: str):
 
 
 async def find_session_by_uid(rdb: redis.Redis, uid: int) -> tuple[str, Session] | None:
-    token = await rdb.hget(UID_SESSION_MAP_KEY, str(uid)) # type: ignore
+    token = await rdb.hget(UID_SESSION_MAP_KEY, str(uid))  # type: ignore
     if not isinstance(token, str):
         return None
 

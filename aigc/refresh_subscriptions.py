@@ -1,8 +1,11 @@
-from sqlmodel import Session, select
+from sqlmodel import select, Session
+from sqlalchemy import Engine
 from datetime import datetime, timedelta
 from loguru import logger
 from . import models
 import asyncio
+import time
+
 
 # FIXME: when near middle, it may return 0 second delay.
 def delay_to_next_middle_night(now: datetime) -> int:
@@ -13,35 +16,36 @@ def delay_to_next_middle_night(now: datetime) -> int:
     return delay_s
 
 
-def refresh_subscriptions(db: Session, dt: datetime):
-    subscriptions = db.exec(
-        select(models.db.MagicPointSubscription).where(
-            models.db.MagicPointSubscription.expired == False
-        )
-    ).all()
+def refresh_subscriptions(db: Engine, dt: datetime):
+    with Session(db) as session:
+        subscriptions = session.exec(
+            select(models.db.MagicPointSubscription).where(
+                models.db.MagicPointSubscription.expired == False
+            )
+        ).all()
 
-    # Refresh subscriptions, if exipre, set state.
-    for s in subscriptions:
-        s.utime = dt
+        # Refresh subscriptions, if exipre, set state.
+        for s in subscriptions:
+            s.utime = dt
 
-        if s.expires_in is not None and dt > s.expires_in:
-            s.expired = True
+            if s.expires_in is not None and dt > s.expires_in:
+                s.expired = True
 
-        else:
-            s.remains = s.init
+            else:
+                s.remains = s.init
 
-    log = models.db.SubscriptionsRefreshLog(refresh_time=dt, cnt=len(subscriptions))
+        log = models.db.SubscriptionsRefreshLog(refresh_time=dt, cnt=len(subscriptions))
 
-    db.add(log)
-    db.commit()
+        session.add(log)
+        session.commit()
 
     logger.info(f"refresh subscrptions, total {len(subscriptions)}")
 
 
-async def refresh_forever(db: Session, delay_s: int):
+def refresh_forever(db: Engine, delay_s: int):
     try:
         while True:
-            await asyncio.sleep(delay_s)
+            time.sleep(delay_s)
             now = datetime.now()
             refresh_subscriptions(db, now)
             delay_s = delay_to_next_middle_night(now)
@@ -52,17 +56,18 @@ async def refresh_forever(db: Session, delay_s: int):
         return
 
 
-def arrage_refresh_subscriptions(db: Session) -> asyncio.Task[None]:
+def arrage_refresh_subscriptions(db: Engine) -> None:
 
     now = datetime.now()
     this_middle_night = now.replace(hour=0, minute=0, second=0, microsecond=0)
 
     # Check if already refreshed today.
-    logs = db.exec(
-        select(models.db.SubscriptionsRefreshLog).where(
-            models.db.SubscriptionsRefreshLog.refresh_time >= this_middle_night
-        )
-    ).all()
+    with Session(db) as session:
+        logs = session.exec(
+            select(models.db.SubscriptionsRefreshLog).where(
+                models.db.SubscriptionsRefreshLog.refresh_time >= this_middle_night
+            )
+        ).all()
 
     # If no refresh log today, refresh immediate.
     if len(logs) == 0:
@@ -72,4 +77,5 @@ def arrage_refresh_subscriptions(db: Session) -> asyncio.Task[None]:
     delay_s = delay_to_next_middle_night(now)
     logger.debug(f"next refresh {delay_s} seconds after.")
 
-    return asyncio.create_task(refresh_forever(db, delay_s))
+    return refresh_forever(db, delay_s)
+

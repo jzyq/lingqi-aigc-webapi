@@ -4,18 +4,15 @@ from fastapi import Depends, Request, FastAPI, HTTPException, Header
 from sqlmodel import Session
 from sqlalchemy import Engine
 import redis.asyncio as redis
-from . import sessions, config, wx, models, prompt_translate
-
-from functools import cache
+from . import infer_dispatch, sessions, config, wx, models, prompt_translate
 
 
-def get_db_file_path(conf: config.Config = Depends(config.get_config)) -> str:
-    return conf.database.file
+def get_app(req: Request) -> FastAPI:
+    return req.app
 
 
-@cache
-def get_db_engine(filepath: str = Depends(get_db_file_path)) -> Engine:
-    return models.initialize_database_io(filepath)
+def get_db_engine(app: FastAPI = Depends(get_app)) -> Engine:
+    return app.state.db
 
 
 def get_db_session(engine: Engine = Depends(get_db_engine)) -> Iterator[Session]:
@@ -26,12 +23,8 @@ def get_db_session(engine: Engine = Depends(get_db_engine)) -> Iterator[Session]
 HeaderField = Annotated[str, Header()]
 
 
-def set_rdb_deps(app: FastAPI, rdb: redis.Redis):
-    app.state.rdb = rdb
-
-
-def get_rdb(req: Request) -> redis.Redis:
-    return req.app.state.rdb
+def get_rdb(app: FastAPI = Depends(get_app)) -> redis.Redis:
+    return app.state.rdb
 
 
 def get_auth_token(authorization: HeaderField) -> str:
@@ -76,3 +69,9 @@ def get_translator(
     conf: config.Config = Depends(config.get_config),
 ) -> prompt_translate.ZhipuaiClient:
     return prompt_translate.ZhipuaiClient(conf.prompt_translate.api_key)
+
+
+def get_inference_client(
+    rdb: redis.Redis = Depends(get_rdb), db: Engine = Depends(get_db_engine)
+) -> infer_dispatch.Client:
+    return infer_dispatch.Client(rdb, db)

@@ -3,8 +3,6 @@ from functools import cache
 from dataclasses import dataclass, field
 from typing import Any
 
-_default_filepath: str = "config.template.toml"
-
 
 @dataclass
 class WebConfig:
@@ -38,12 +36,12 @@ class RedisConfig:
 
 @dataclass
 class DatabaseConfig:
-    file: str = field(default_factory=lambda: _default_filepath)
+    url: str = ""
 
     @staticmethod
     def load(toml: dict[str, Any]) -> "DatabaseConfig":
-        file: str = toml["file"]
-        return DatabaseConfig(file=file)
+        url: str = toml["url"]
+        return DatabaseConfig(url=url)
 
 
 @dataclass

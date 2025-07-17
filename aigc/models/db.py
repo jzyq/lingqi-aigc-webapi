@@ -105,6 +105,7 @@ class InferenceLog(SQLModel, table=True):
     uid: int = Field(index=True)
     tid: str = Field(index=True)
     type: InferenceType
+    point: int
     state: InferenceState = InferenceState.waiting
     ctime: datetime = Field(default_factory=datetime.now)
     utime: datetime = Field(default_factory=datetime.now)
