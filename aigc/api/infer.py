@@ -302,7 +302,7 @@ async def replace_with_reference(
 ) -> CreateRequestResponse:
 
     point = 10
-    url = conf.infer.base + conf.infer.replace_any
+    url = conf.infer.base + conf.infer.replace_reference
     return await start_new_inference(
         models.db.InferenceType.replace_with_reference,
         ses.uid,
@@ -326,7 +326,7 @@ async def image_to_video(
     inference_client: infer_dispatch.Client = Depends(deps.get_inference_client),
 ) -> CreateRequestResponse:
     point = 30
-    url = conf.infer.base + conf.infer.replace_any
+    url = conf.infer.base + conf.infer.image_to_video
     return await start_new_inference(
         models.db.InferenceType.image_to_video,
         ses.uid,
@@ -350,7 +350,7 @@ async def segment_any(
     inference_client: infer_dispatch.Client = Depends(deps.get_inference_client),
 ) -> CreateRequestResponse:
     point = 1
-    url = conf.infer.base + conf.infer.replace_any
+    url = conf.infer.base + conf.infer.segment_any
     return await start_new_inference(
         models.db.InferenceType.segment_any,
         ses.uid,
@@ -385,7 +385,7 @@ async def edit_with_prompt(
     except json.JSONDecodeError:
         raise HTTPException(422, detail="must have request body")
 
-    url = conf.infer.base + conf.infer.replace_any
+    url = conf.infer.base + conf.infer.edit_with_prompt
     return await start_new_inference(
         models.db.InferenceType.edit_with_prompt,
         ses.uid,
