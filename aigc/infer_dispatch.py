@@ -8,6 +8,7 @@ from typing import Any, Mapping
 import httpx
 import redis
 import redis.asyncio as async_redis
+import redis.exceptions
 import sqlalchemy
 import sqlmodel
 from loguru import logger
@@ -298,15 +299,18 @@ class Server:
             pass
 
         while True:
-            messages = self._rdb.xreadgroup(
-                READGROUP_NAME, CONSUMER_NAME, {STREAM_NAME: ">"}, block=60 * 60 * 1000
-            )
-            logger.debug(messages)
-
-            if len(messages) == 0:  # type: ignore
-                logger.debug("no new inference in last 1 hour.")
+            try:
+                messages = self._rdb.xreadgroup(
+                    READGROUP_NAME, CONSUMER_NAME, {STREAM_NAME: ">"}, block=30 * 1000
+                )
+            except redis.exceptions.ResponseError as exc:
+                logger.warning(f"poll message error: {str(exc)}")
                 continue
 
+            if len(messages) == 0:  # type: ignore
+                continue
+
+            logger.debug(messages)
             stream_name, messages = messages[0]  # type:ignore
             if stream_name != STREAM_NAME:
                 continue

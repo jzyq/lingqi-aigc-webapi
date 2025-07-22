@@ -1,6 +1,8 @@
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel
+from pydantic import BaseModel, TypeAdapter
+import redis.asyncio
 from .. import models, deps
+from ..mainpage_config import BannerItem
 
 
 class APIResponse(BaseModel):
@@ -21,13 +23,25 @@ router = APIRouter(prefix="/main")
 
 @router.get("/banner")
 async def get_main_page_banner_data(
-    mainpage: models.mainpage.MainPageData = Depends(deps.get_main_page_data),
+    rdb: redis.asyncio.Redis = Depends(deps.get_rdb),
 ) -> BannerItemList:
-    return BannerItemList(items=mainpage.banner)
+    data = await rdb.get("aigc:banner")
+    adapter = TypeAdapter(list[BannerItem])
+    items = adapter.validate_json(data)
+
+    res = BannerItemList(items=[])
+    for i in items:
+        d = models.mainpage.BannerData(image=i.image, video=i.video)
+        res.items.append(d)
+
+    return res
 
 
 @router.get("/magic")
 async def get_main_page_showcase_data(
-    mainpage: models.mainpage.MainPageData = Depends(deps.get_main_page_data),
+    rdb: redis.asyncio.Redis = Depends(deps.get_rdb),
 ) -> MagicShowcases:
-    return MagicShowcases(magic=mainpage.magic)
+    data = await rdb.get("aigc:magic")
+    magic = models.mainpage.Magic.model_validate_json(data)
+    resp = MagicShowcases(magic=magic)
+    return resp

@@ -182,6 +182,19 @@ class PromptTranslate:
         return PromptTranslate(api_key=toml["api_key"])
 
 
+@dataclass
+class RemoteConfig:
+    app_id: str = ""
+    secret: str = ""
+    bitable_id: str = ""
+
+    @staticmethod
+    def load(toml: dict[str, Any]) -> "RemoteConfig":
+        return RemoteConfig(
+            app_id=toml["app_id"], secret=toml["secret"], bitable_id=toml["bitable_id"]
+        )
+
+
 # Just read this config when needed.
 @dataclass
 class Config:
@@ -192,6 +205,7 @@ class Config:
     magic_points: MagicPointConfig = field(default_factory=MagicPointConfig)
     infer: InferConfig = field(default_factory=InferConfig)
     prompt_translate: PromptTranslate = field(default_factory=PromptTranslate)
+    remote_config: RemoteConfig = field(default_factory=RemoteConfig)
 
     @staticmethod
     def load(toml: dict[str, Any]) -> "Config":
@@ -203,6 +217,7 @@ class Config:
             magic_points=MagicPointConfig.load(toml["magic_points"]),
             infer=InferConfig.load(toml["infer"]),
             prompt_translate=PromptTranslate.load(toml["prompt_translate"]),
+            remote_config=RemoteConfig.load(toml["remote_config"]),
         )
 
 

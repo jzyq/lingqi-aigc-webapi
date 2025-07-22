@@ -51,3 +51,8 @@ edit_with_prompt = "/edit_with_prompt"
 
 [prompt_translate]
 api_key = ""
+
+[remote_config]
+app_id = ""
+secret = ""
+bitable_id = ""

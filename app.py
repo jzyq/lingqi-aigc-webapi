@@ -1,6 +1,6 @@
 import redis.asyncio
 import uvicorn
-from aigc import config, api, infer_dispatch, refresh_subscriptions
+from aigc import config, api, infer_dispatch, refresh_subscriptions, mainpage_config
 from argparse import ArgumentParser
 import redis
 from contextlib import asynccontextmanager
@@ -39,25 +39,38 @@ def main(configpath: str, inference_dispatch: bool = False, dev: bool = False) -
     # if inference dispatcher needed, start dispatch server.
     if inference_dispatch:
         logger.info("with inference dispatch with process")
-        rdb = redis.Redis(host=conf.redis.host, port=conf.redis.port, db=conf.redis.db)
+        rdb = redis.Redis(
+            host=conf.redis.host,
+            port=conf.redis.port,
+            db=conf.redis.db,
+            decode_responses=True,
+        )
         srv = infer_dispatch.Server(rdb, db)
         dispatch_thread = Thread(target=srv.serve_forever, daemon=True)
         dispatch_thread.start()
 
+    # mainpage remote config sync.
+    conf_sync = mainpage_config.MainPageRemoteConfig(conf.redis, conf.remote_config)
+    conf_sync.refresh_banner()
+    conf_sync.refresh_magic()
+
     # Use app lifespan function to cleanup resource after shutdown.
     @asynccontextmanager
     async def lifespan(app: FastAPI):
+        app.state.conf_sync = conf_sync
         app.state.db = db
         app.state.rdb = async_rdb
         yield
         await async_rdb.aclose()
 
     app = FastAPI(lifespan=lifespan)
-    app.include_router(api.router)
 
     if dev:
         logger.info("develop mode")
+        app.include_router(api.router, prefix="/aigc")
         app.include_router(api.dev.router, prefix="/dev")
+    else:
+        app.include_router(api.router)
 
     try:
         uvicorn.run(app, host=conf.web.host, port=conf.web.port, timeout_keep_alive=300)
