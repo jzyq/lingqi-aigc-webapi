@@ -305,6 +305,10 @@ class Server:
                 )
             except redis.exceptions.ResponseError as exc:
                 logger.warning(f"poll message error: {str(exc)}")
+                try:
+                    self._rdb.xgroup_create(STREAM_NAME, READGROUP_NAME, mkstream=True)
+                except:
+                    pass
                 continue
 
             if len(messages) == 0:  # type: ignore
