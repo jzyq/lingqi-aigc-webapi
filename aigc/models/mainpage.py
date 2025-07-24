@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-
+from typing import Any
 
 class BannerData(BaseModel):
     image: str
@@ -30,3 +30,10 @@ class Magic(BaseModel):
 class MainPageData(BaseModel):
     banner: list[BannerData]
     magic: Magic
+
+
+class Shortcut(BaseModel):
+    type: str
+    magic: str
+    teach: str
+    params: Any

@@ -18,6 +18,10 @@ class MagicShowcases(APIResponse):
     magic: models.mainpage.Magic
 
 
+class ShortcutRespnose(APIResponse):
+    shortcuts: list[models.mainpage.Shortcut] = []
+
+
 router = APIRouter(prefix="/main")
 
 
@@ -35,6 +39,14 @@ async def get_main_page_banner_data(
         res.items.append(d)
 
     return res
+
+
+@router.get("/shortcut")
+async def get_shortcuts_data(rdb: redis.asyncio.Redis = Depends(deps.get_rdb)) -> ShortcutRespnose:
+    adapter = TypeAdapter(list[models.mainpage.Shortcut])
+    data = await rdb.get("aigc:shortcut")
+    items = adapter.validate_json(data)
+    return ShortcutRespnose(shortcuts=items)
 
 
 @router.get("/magic")

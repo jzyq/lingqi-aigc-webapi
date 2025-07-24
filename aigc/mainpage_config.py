@@ -7,6 +7,7 @@ import httpx
 import secrets
 import os
 from pydantic import BaseModel, TypeAdapter
+import json
 
 BANNER_KEY = "banner配置"
 MAGIC_KEY = "magic配置"
@@ -31,7 +32,8 @@ class MainPageRemoteConfig:
             decode_responses=True,
         )
 
-        self._auth_token: AuthToken = AuthToken(remote_conf.app_id, remote_conf.secret)
+        self._auth_token: AuthToken = AuthToken(
+            remote_conf.app_id, remote_conf.secret)
         self._bid: str = remote_conf.bitable_id
 
     def refresh_banner(self) -> None:
@@ -129,26 +131,58 @@ class MainPageRemoteConfig:
 
         partial = mainpage.ShowcasesAndPrompts(
             showcase=(
-                showcases_by_name["partial"] if "partial" in showcases_by_name else []
+                showcases_by_name["partial"] if "partial" in showcases_by_name else [
+                ]
             ),
-            prompts=prompts_by_name["partial"] if "partial" in prompts_by_name else [],
+            prompts=prompts_by_name["partial"] if "partial" in prompts_by_name else [
+            ],
         )
         powerful = mainpage.ShowcasesAndPrompts(
             showcase=(
-                showcases_by_name["powerful"] if "powerful" in showcases_by_name else []
+                showcases_by_name["powerful"] if "powerful" in showcases_by_name else [
+                ]
             ),
             prompts=(
-                prompts_by_name["powerful"] if "powerful" in prompts_by_name else []
+                prompts_by_name["powerful"] if "powerful" in prompts_by_name else [
+                ]
             ),
         )
         i2v = mainpage.ShowcasesAndPrompts(
-            showcase=showcases_by_name["i2v"] if "i2v" in showcases_by_name else [],
+            showcase=showcases_by_name["i2v"] if "i2v" in showcases_by_name else [
+            ],
             prompts=prompts_by_name["i2v"] if "i2v" in prompts_by_name else [],
         )
 
         magic = mainpage.Magic(partial=partial, powerful=powerful, i2v=i2v)
         self._rdb.set("aigc:magic", magic.model_dump_json())
         logger.info("pull magic config down.")
+
+    def refresh_shortcut(self) -> None:
+        logger.info("pulling shortcut config ...")
+
+        shortcuts: list[mainpage.Shortcut] = []
+
+        for r in Bitable(self._auth_token, self._bid).table("shortcut配置").view("表格").rows():
+            _type = r.col("type")
+            magic = r.col("magic")
+            teach = r.col("teach")
+            params = r.col("params")
+
+            magic_file_name = self.download_resource(magic.url)
+            teach_file_name = self.download_resource(teach.url)
+            params_body = json.loads(params.text)
+
+            s = mainpage.Shortcut(
+                type=_type.value,
+                magic=f"/aigc/api/download/{magic_file_name}",
+                teach=f"/aigc/api/download/{teach_file_name}",
+                params=params_body)
+            shortcuts.append(s)
+
+        adapter = TypeAdapter(list[mainpage.Shortcut])
+        self._rdb.set("aigc:shortcut", adapter.dump_json(shortcuts))
+
+        logger.info("pull shortcut down")
 
     def download_resource(self, url: str) -> str:
         resp = httpx.get(

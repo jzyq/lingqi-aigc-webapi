@@ -53,6 +53,7 @@ def main(configpath: str, inference_dispatch: bool = False, dev: bool = False) -
     conf_sync = mainpage_config.MainPageRemoteConfig(conf.redis, conf.remote_config)
     conf_sync.refresh_banner()
     conf_sync.refresh_magic()
+    conf_sync.refresh_shortcut()
 
     # Use app lifespan function to cleanup resource after shutdown.
     @asynccontextmanager
