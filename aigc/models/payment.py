@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from . import db
+from . import database
 
 
 class OpenPaymentRequest(BaseModel):
@@ -56,5 +56,5 @@ class PayCallbackResult(BaseModel):
 
 class GetPaymentStateResponse(BaseModel):
     tradeid: str
-    state: db.PayState
+    state: database.pay.State
     desc: str | None = None

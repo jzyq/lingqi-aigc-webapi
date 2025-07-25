@@ -1,9 +1,10 @@
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
-from .. import sessions, deps, models
+from .. import sessions, deps
 import sqlmodel
 from typing import Any
 import json
+from ..models import database
 
 
 class InferenceDetail(BaseModel):
@@ -49,19 +50,19 @@ async def get_inference_history(
 ) -> APIResponse:
 
     selection = (
-        sqlmodel.select(models.db.InferenceLog)
-        .where(models.db.InferenceLog.uid == ses.uid)
-        .where(models.db.InferenceLog.type != models.db.InferenceType.segment_any)
-        .order_by(sqlmodel.desc(models.db.InferenceLog.ctime))
+        sqlmodel.select(database.inference.Log)
+        .where(database.inference.Log.uid == ses.uid)
+        .where(database.inference.Log.type != database.inference.Type.segment_any)
+        .order_by(sqlmodel.desc(database.inference.Log.ctime))
         .offset(start)
         .limit(count)
     )
 
     count_query = (
         sqlmodel.select(sqlmodel.func.count())
-        .select_from(models.db.InferenceLog)
-        .where(models.db.InferenceLog.uid == ses.uid)
-        .where(models.db.InferenceLog.type != models.db.InferenceType.segment_any)
+        .select_from(database.inference.Log)
+        .where(database.inference.Log.uid == ses.uid)
+        .where(database.inference.Log.type != database.inference.Type.segment_any)
     )
     total = db.exec(count_query).one()
 
@@ -79,6 +80,7 @@ async def get_inference_history(
         result.history.append(h)
     return APIResponse(data=result)
 
+
 # TODO need to handle key error.
 @router.get("/detail/{tid}")
 async def get_inference_detail(
@@ -87,9 +89,9 @@ async def get_inference_detail(
     db: sqlmodel.Session = Depends(deps.get_db_session),
 ) -> APIResponse:
     query = (
-        sqlmodel.select(models.db.InferenceLog)
-        .where(models.db.InferenceLog.uid == ses.uid)
-        .where(models.db.InferenceLog.tid == tid)
+        sqlmodel.select(database.inference.Log)
+        .where(database.inference.Log.uid == ses.uid)
+        .where(database.inference.Log.tid == tid)
     )
     log = db.exec(query).one_or_none()
     if log is None:
@@ -121,9 +123,9 @@ async def delete_inference_history(
     dbsession: sqlmodel.Session = Depends(deps.get_db_session),
 ) -> APIResponse:
     query = (
-        sqlmodel.select(models.db.InferenceLog)
-        .where(models.db.InferenceLog.uid == ses.uid)
-        .where(models.db.InferenceLog.tid == tid)
+        sqlmodel.select(database.inference.Log)
+        .where(database.inference.Log.uid == ses.uid)
+        .where(database.inference.Log.tid == tid)
     )
     ilog = dbsession.exec(query).one_or_none()
 

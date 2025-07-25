@@ -6,15 +6,14 @@ from datetime import datetime
 from typing import Any, Mapping
 
 import httpx
-import redis
-import redis.asyncio as async_redis
-import redis.exceptions
-import sqlalchemy
-import sqlmodel
+from sqlalchemy import Engine
+from sqlmodel import Session, select, asc
 from loguru import logger
 from pydantic import BaseModel
+import time
+import asyncio
 
-from . import models
+from .models.database import inference, subscription
 
 TOKEN_LEN = 8
 RESPONSE_UNSET = "response_unset"
@@ -40,7 +39,7 @@ class CancelError(Exception):
 class InferenceStateUpdateMessage(BaseModel):
     tid: str
     uid: int
-    state: models.db.InferenceState
+    state: inference.State
 
 
 class NewInferenceMessage(BaseModel):
@@ -51,54 +50,51 @@ class NewInferenceMessage(BaseModel):
 
 # query current uesr subscription from database.
 @contextmanager
-def current_subscription(
-    uid: int, db: sqlalchemy.Engine
-) -> Iterator[models.db.MagicPointSubscription]:
+def current_subscription(uid: int, db: Engine) -> Iterator[subscription.Subscription]:
     query = (
-        sqlmodel.select(models.db.MagicPointSubscription)
-        .where(models.db.MagicPointSubscription.uid == uid)
-        .where(models.db.MagicPointSubscription.expired == False)
+        select(subscription.Subscription)
+        .where(subscription.Subscription.uid == uid)
+        .where(subscription.Subscription.expired == False)
     )
 
-    with sqlmodel.Session(db) as session:
-        subscriptions = session.exec(query).all()
+    with Session(db) as session:
+        user_subscriptions = session.exec(query).all()
 
-    trail: list[models.db.MagicPointSubscription] = []
-    payed: list[models.db.MagicPointSubscription] = []
+    trail: list[subscription.Subscription] = []
+    payed: list[subscription.Subscription] = []
 
-    for s in subscriptions:
-        if s.stype == models.db.SubscriptionType.trail:
+    for s in user_subscriptions:
+        if s.stype == subscription.Type.trail:
             trail.append(s)
-        if s.stype == models.db.SubscriptionType.subscription:
+        if s.stype == subscription.Type.subscription:
             payed.append(s)
 
-    subscription: models.db.MagicPointSubscription | None = None
+    s: subscription.Subscription | None = None
     if len(payed) != 0:
-        subscription = payed[0]
+        s = payed[0]
     elif len(trail) != 0:
-        subscription = trail[0]
+        s = trail[0]
     else:
         raise AssertionError("no valid subscriptions")
 
     try:
-        yield subscription
+        yield s
     except:
         pass
     else:
-        with sqlmodel.Session(db) as session:
-            session.add(subscription)
+        with Session(db) as session:
+            session.add(s)
             session.commit()
 
 
 class Client:
 
-    def __init__(self, rdb: async_redis.Redis, db: sqlalchemy.Engine) -> None:
-        self._rdb = rdb
-        self._db = db
+    def __init__(self, db: Engine) -> None:
+        self._db: Engine = db
 
     async def new_inference(
         self,
-        type: models.db.InferenceType,
+        type: inference.Type,
         uid: int,
         url: str,
         point: int,
@@ -106,225 +102,190 @@ class Client:
     ) -> str:
         token = secrets.token_hex(TOKEN_LEN)
 
-        with sqlmodel.Session(self._db) as session:
-            inference = models.db.InferenceLog(
-                uid=uid, tid=token, type=type, request=json.dumps(body), point=point
+        with Session(self._db) as session:
+            log = inference.Log(
+                uid=uid,
+                tid=token,
+                type=type,
+                request=json.dumps(body),
+                point=point,
+                url=url,
             )
-            session.add(inference)
+            session.add(log)
             session.commit()
 
         with current_subscription(uid, self._db) as subscription:
             subscription.remains -= point
 
-        new_inference_message = NewInferenceMessage(tid=token, uid=uid, url=url)
-        await self._rdb.xadd(STREAM_NAME, new_inference_message.model_dump())  # type: ignore
-
         logger.info(f"new inference {token}")
         return token
 
-    async def state(self, uid: int, tid: str) -> models.db.InferenceState:
-        with sqlmodel.Session(self._db) as session:
+    async def state(self, uid: int, tid: str) -> inference.State:
+        with Session(self._db) as session:
             query = (
-                sqlmodel.select(models.db.InferenceLog)
-                .where(models.db.InferenceLog.uid == uid)
-                .where(models.db.InferenceLog.tid == tid)
+                select(inference.Log)
+                .where(inference.Log.uid == uid)
+                .where(inference.Log.tid == tid)
             )
-            inference = session.exec(query).one_or_none()
-        if inference is None:
+            log = session.exec(query).one_or_none()
+        if log is None:
             raise KeyError("no such inference")
-        return inference.state
+        return log.state
 
     async def result(self, uid: int, tid: str) -> Mapping[str, Any]:
-        with sqlmodel.Session(self._db) as session:
+        with Session(self._db) as session:
             query = (
-                sqlmodel.select(models.db.InferenceLog)
-                .where(models.db.InferenceLog.uid == uid)
-                .where(models.db.InferenceLog.tid == tid)
+                select(inference.Log)
+                .where(inference.Log.uid == uid)
+                .where(inference.Log.tid == tid)
             )
-            inference = session.exec(query).one_or_none()
+            log = session.exec(query).one_or_none()
 
-        if inference is None:
+        if log is None:
             raise KeyError("no such inference")
-        if inference.response == "":
+        if log.response == "":
             raise NotDownError(tid)
-        return json.loads(inference.response)
+        return json.loads(log.response)
 
     async def wait(self, uid: int, tid: str) -> Mapping[str, Any]:
-        pubsub = self._rdb.pubsub()  # type: ignore
-        await pubsub.subscribe(INFERENCE_STATE_CHANNEL)  # type: ignore
 
-        with sqlmodel.Session(self._db) as session:
+        with Session(self._db) as session:
             query = (
-                sqlmodel.select(models.db.InferenceLog)
-                .where(models.db.InferenceLog.uid == uid)
-                .where(models.db.InferenceLog.tid == tid)
+                select(inference.Log)
+                .where(inference.Log.uid == uid)
+                .where(inference.Log.tid == tid)
             )
-            inference = session.exec(query).one_or_none()
+            log = session.exec(query).one_or_none()
 
-            if inference is None:
+            if log is None:
                 raise KeyError("no such inference")
 
-            if inference.response != "":
-                return json.loads(inference.response)
+            if log.response != "":
+                return json.loads(log.response)
 
-        while True:
-            msg = await pubsub.get_message(  # type: ignore
-                ignore_subscribe_messages=True, timeout=1
-            )
-            if msg and msg["type"] == "message":
-                update_message = InferenceStateUpdateMessage.model_validate_json(
-                    msg["data"]  # type: ignore
-                )
-                if (
-                    update_message.tid == inference.tid
-                    and update_message.uid == inference.uid
-                ):
-                    if update_message.state not in (
-                        models.db.InferenceState.waiting,
-                        models.db.InferenceState.in_progress,
+        def do_wait(ilog: inference.Log):
+            while True:
+                time.sleep(1)
+                with Session(self._db) as ses:
+                    ses.add(ilog)
+                    ses.refresh(ilog)
+
+                    if ilog.state not in (
+                        inference.State.waiting,
+                        inference.State.in_progress,
                     ):
-                        break
+                        return
 
-        with sqlmodel.Session(self._db) as session:
-            session.add(inference)
-            session.refresh(inference)
+        await asyncio.to_thread(do_wait, log)
 
-            return json.loads(inference.response)
+        with Session(self._db) as ses:
+            ses.add(log)
+            ses.refresh(log)
+
+        if log.response == "":
+            raise NotDownError(log.tid)
+
+        return json.loads(log.response)
 
     async def cancel(self, uid: int, tid: str) -> None:
-        with sqlmodel.Session(self._db) as session:
+        with Session(self._db) as session:
             query = (
-                sqlmodel.select(models.db.InferenceLog)
-                .where(models.db.InferenceLog.uid == uid)
-                .where(models.db.InferenceLog.tid == tid)
+                select(inference.Log)
+                .where(inference.Log.uid == uid)
+                .where(inference.Log.tid == tid)
             )
-            inference = session.exec(query).one_or_none()
+            log = session.exec(query).one_or_none()
 
-            if inference is None:
+            if log is None:
                 raise KeyError("no such inference")
 
-            if inference.state != models.db.InferenceState.waiting:
-                if inference.state == models.db.InferenceState.in_progress:
+            if log.state != inference.State.waiting:
+                if log.state == inference.State.in_progress:
                     raise CancelError(f"inference {tid} already in progress")
                 else:
                     raise CancelError(f"inference {tid} already complete")
 
-            inference.state = models.db.InferenceState.canceled
+            log.state = inference.State.canceled
             resp: dict[str, int | str] = {
                 "code": 20,
                 "msg": "inference has been canceled",
             }
-            inference.response = json.dumps(resp)
-            inference.utime = datetime.now()
+            log.response = json.dumps(resp)
+            log.utime = datetime.now()
             session.commit()
 
             with current_subscription(uid, self._db) as subscription:
-                subscription.remains += inference.point
-
-            await self._rdb.publish(  # type: ignore
-                INFERENCE_STATE_CHANNEL, json.dumps({"uid": uid, "tid": tid})
-            )
+                subscription.remains += log.point
 
 
 class Server:
 
-    def __init__(self, rdb: redis.Redis, db: sqlalchemy.Engine) -> None:
-        self._rdb = rdb
-        self._db = db
+    def __init__(self, db: Engine) -> None:
+        self._db: Engine = db
 
-    def dispatch(self, tid: str, uid: int, url: str) -> None:
+    def dispatch(self, log: inference.Log) -> None:
 
-        with sqlmodel.Session(self._db) as session:
-            query = (
-                sqlmodel.select(models.db.InferenceLog)
-                .where(models.db.InferenceLog.uid == uid)
-                .where(models.db.InferenceLog.tid == tid)
-            )
-            inference = session.exec(query).one()
+        with Session(self._db) as session:
+            session.add(log)
+            session.refresh(log)
 
-            if inference.state != models.db.InferenceState.waiting:
-                logger.info(
-                    f"inference {tid} has been canceled or already complete, ignore."
-                )
+            if log.state == inference.State.canceled:
                 return
 
-            inference.state = models.db.InferenceState.in_progress
-            inference.utime = datetime.now()
+            log.state = inference.State.in_progress
+            log.utime = datetime.now()
+            session.add(log)
             session.commit()
+            session.refresh(log)
 
-            try:
-                with httpx.Client(timeout=None) as client:
-                    resp = client.post(url=url, json=json.loads(inference.request))
-                    resp.raise_for_status()
+            url = log.url
+            body = json.loads(log.request)
+            tid = log.tid
 
-                    inference.response = resp.content.decode()
-                    inference.state = models.db.InferenceState.down
-                    inference.utime = datetime.now()
-                    session.commit()
+        try:
+            with httpx.Client(timeout=None) as client:
+                resp = client.post(url=url, json=body)
+                resp.raise_for_status()
 
-                update_message = InferenceStateUpdateMessage(
-                    tid=tid, uid=uid, state=models.db.InferenceState.down
-                )
-                self._rdb.publish(  # type: ignore
-                    INFERENCE_STATE_CHANNEL, update_message.model_dump_json()
-                )
-                logger.info(f"inference {tid} complete.")
+                log.response = resp.content.decode()
+                log.state = inference.State.down
+                log.utime = datetime.now()
 
-            except httpx.HTTPError as e:
-                response = json.dumps({"code": 1, "msg": f"inference error, {str(e)}"})
-
-                inference.response = response
-                inference.state = models.db.InferenceState.failed
-                inference.utime = datetime.now()
+            with Session(self._db) as session:
+                session.add(log)
                 session.commit()
 
-                with current_subscription(inference.uid, self._db) as subscription:
-                    subscription.remains += inference.point
+            logger.info(f"inference {tid} complete.")
 
-                update_message = InferenceStateUpdateMessage(
-                    tid=tid, uid=uid, state=models.db.InferenceState.failed
-                )
-                self._rdb.publish(  # type: ignore
-                    INFERENCE_STATE_CHANNEL, update_message.model_dump_json()
-                )
+        except httpx.HTTPError as e:
+            response = json.dumps({"code": 1, "msg": f"inference error, {str(e)}"})
 
-                logger.error(
-                    f"inference {tid} error, {str(e)}, recharge point {inference.point}"
-                )
+            log.response = response
+            log.state = inference.State.failed
+            log.utime = datetime.now()
+
+            with Session(self._db) as session:
+                session.add(log)
+                session.commit()
+
+            with current_subscription(log.uid, self._db) as s:
+                s.remains += log.point
+
+            logger.error(
+                f"inference {log.tid} error, {str(e)}, recharge point {log.point}"
+            )
 
     def serve_forever(self) -> None:
-        try:
-            self._rdb.xgroup_create(STREAM_NAME, READGROUP_NAME, mkstream=True)
-        except:
-            pass
-
         while True:
-            try:
-                messages = self._rdb.xreadgroup(
-                    READGROUP_NAME, CONSUMER_NAME, {STREAM_NAME: ">"}, block=30 * 1000
-                )
-            except redis.exceptions.ResponseError as exc:
-                logger.warning(f"poll message error: {str(exc)}")
-                try:
-                    self._rdb.xgroup_create(STREAM_NAME, READGROUP_NAME, mkstream=True)
-                except:
-                    pass
-                continue
+            query = (
+                select(inference.Log)
+                .where(inference.Log.state == inference.State.waiting)
+                .order_by(asc(inference.Log.ctime))
+                .limit(10)
+            )
+            with Session(self._db) as session:
+                waiting_inference = session.exec(query).all()
 
-            if len(messages) == 0:  # type: ignore
-                continue
-
-            logger.debug(messages)
-            stream_name, messages = messages[0]  # type:ignore
-            if stream_name != STREAM_NAME:
-                continue
-
-            for mid, data in messages:  # type: ignore
-                new_inference = NewInferenceMessage.model_validate(data)
-                logger.info(
-                    f"new inference {new_inference.tid} from user {new_inference.uid}"
-                )
-                self.dispatch(
-                    tid=new_inference.tid, uid=new_inference.uid, url=new_inference.url
-                )
-                self._rdb.xack(STREAM_NAME, READGROUP_NAME, mid)  # type: ignore
+            for i in waiting_inference:
+                self.dispatch(i)
+                time.sleep(1)

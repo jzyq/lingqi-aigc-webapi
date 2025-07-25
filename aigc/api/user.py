@@ -11,11 +11,11 @@ async def user_info(
     ses: deps.UserSession,
     db: Session = Depends(deps.get_db_session),
 ) -> models.user.GetUserInfoResponse:
-    userinfo = db.get_one(models.db.User, ses.uid)
+    userinfo = db.get_one(models.database.user.User, ses.uid)
     subscription = db.exec(
-        select(models.db.MagicPointSubscription)
-        .where(models.db.MagicPointSubscription.uid == ses.uid)
-        .where(models.db.MagicPointSubscription.expired == False)
+        select(models.database.subscription.Subscription)
+        .where(models.database.subscription.Subscription.uid == ses.uid)
+        .where(models.database.subscription.Subscription.expired == False)
     ).all()
 
     # Subscription should have only one.
@@ -24,7 +24,7 @@ async def user_info(
     is_member = False
 
     for s in [
-        s for s in subscription if s.stype == models.db.SubscriptionType.subscription
+        s for s in subscription if s.stype == models.database.subscription.Type.subscription
     ]:
         if s.expired == True:
             continue
@@ -35,7 +35,7 @@ async def user_info(
 
     if not is_member:
         for s in [
-            s for s in subscription if s.stype == models.db.SubscriptionType.trail
+            s for s in subscription if s.stype == models.database.subscription.Type.trail
         ]:
             point_in_today += s.remains
 

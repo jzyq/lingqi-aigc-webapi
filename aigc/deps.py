@@ -71,7 +71,6 @@ def get_translator(
     return prompt_translate.ZhipuaiClient(conf.prompt_translate.api_key)
 
 
-def get_inference_client(
-    rdb: redis.Redis = Depends(get_rdb), db: Engine = Depends(get_db_engine)
+def get_inference_client(db: Engine = Depends(get_db_engine)
 ) -> infer_dispatch.Client:
-    return infer_dispatch.Client(rdb, db)
+    return infer_dispatch.Client(db)

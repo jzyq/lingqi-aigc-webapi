@@ -13,7 +13,8 @@ from pydantic import BaseModel, ValidationError
 from sqlalchemy import Engine
 from sqlmodel import Session, select
 
-from .. import config, deps, infer_dispatch, models, prompt_translate, sessions
+from .. import config, deps, infer_dispatch, prompt_translate, sessions
+from ..models import database
 
 
 # Exception raised when user try call infer API but do not have enough points.
@@ -30,24 +31,24 @@ class InferResponse(BaseModel):
 # query current uesr subscription from database.
 async def get_current_subscription(
     uid: int, db: Session
-) -> models.db.MagicPointSubscription:
+) -> database.subscription.Subscription:
     query = (
-        select(models.db.MagicPointSubscription)
-        .where(models.db.MagicPointSubscription.uid == uid)
-        .where(models.db.MagicPointSubscription.expired == False)
+        select(database.subscription.Subscription)
+        .where(database.subscription.Subscription.uid == uid)
+        .where(database.subscription.Subscription.expired == False)
     )
     subscriptions = db.exec(query).all()
 
-    trail: list[models.db.MagicPointSubscription] = []
-    payed: list[models.db.MagicPointSubscription] = []
+    trail: list[database.subscription.Subscription] = []
+    payed: list[database.subscription.Subscription] = []
 
     for s in subscriptions:
-        if s.stype == models.db.SubscriptionType.trail:
+        if s.stype == database.subscription.Type.trail:
             trail.append(s)
-        if s.stype == models.db.SubscriptionType.subscription:
+        if s.stype == database.subscription.Type.subscription:
             payed.append(s)
 
-    subscription: models.db.MagicPointSubscription | None = None
+    subscription: database.subscription.Subscription | None = None
     if len(payed) != 0:
         subscription = payed[0]
     elif len(trail) != 0:
@@ -62,9 +63,9 @@ async def get_current_subscription(
 class PointManager:
 
     def __init__(
-        self, subscription: models.db.MagicPointSubscription, db: Session
+        self, subscription: database.subscription.Subscription, db: Session
     ) -> None:
-        self._sub: models.db.MagicPointSubscription = subscription
+        self._sub: database.subscription.Subscription = subscription
         self._db: Session = db
 
     @property
@@ -174,7 +175,7 @@ async def get_point_manager(
 
 
 async def start_new_inference(
-    type: models.db.InferenceType,
+    type: database.inference.Type,
     uid: int,
     url: str,
     point: int,
@@ -209,7 +210,7 @@ async def get_req_state(
 ) -> GetStateResponse:
 
     response = GetStateResponse(
-        code=0, msg="ok", tid=tid, index=0, state=str(models.db.InferenceState.waiting)
+        code=0, msg="ok", tid=tid, index=0, state=str(database.inference.State.waiting)
     )
 
     try:
@@ -219,9 +220,9 @@ async def get_req_state(
     except (ValueError, KeyError):
         with Session(db) as dbsession:
             ilog = dbsession.exec(
-                select(models.db.InferenceLog)
-                .where(models.db.InferenceLog.uid == ses.uid)
-                .where(models.db.InferenceLog.tid == tid)
+                select(database.inference.Log)
+                .where(database.inference.Log.uid == ses.uid)
+                .where(database.inference.Log.tid == tid)
             ).one_or_none()
 
             if ilog is None:
@@ -279,7 +280,7 @@ async def replace_with_any(
     point = 10
     url = conf.infer.base + conf.infer.replace_any
     return await start_new_inference(
-        models.db.InferenceType.replace_with_any,
+        database.inference.Type.replace_with_any,
         ses.uid,
         url,
         point,
@@ -304,7 +305,7 @@ async def replace_with_reference(
     point = 10
     url = conf.infer.base + conf.infer.replace_reference
     return await start_new_inference(
-        models.db.InferenceType.replace_with_reference,
+        database.inference.Type.replace_with_reference,
         ses.uid,
         url,
         point,
@@ -328,7 +329,7 @@ async def image_to_video(
     point = 30
     url = conf.infer.base + conf.infer.image_to_video
     return await start_new_inference(
-        models.db.InferenceType.image_to_video,
+        database.inference.Type.image_to_video,
         ses.uid,
         url,
         point,
@@ -352,7 +353,7 @@ async def segment_any(
     point = 1
     url = conf.infer.base + conf.infer.segment_any
     return await start_new_inference(
-        models.db.InferenceType.segment_any,
+        database.inference.Type.segment_any,
         ses.uid,
         url,
         point,
@@ -387,7 +388,7 @@ async def edit_with_prompt(
 
     url = conf.infer.base + conf.infer.edit_with_prompt
     return await start_new_inference(
-        models.db.InferenceType.edit_with_prompt,
+        database.inference.Type.edit_with_prompt,
         ses.uid,
         url,
         point,

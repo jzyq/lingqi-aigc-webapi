@@ -2,7 +2,8 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 import redis.asyncio
 from sqlmodel import Session, select
-from .. import deps, models, sessions
+from .. import deps, sessions
+from ..models import database
 
 router = APIRouter()
 
@@ -27,7 +28,7 @@ async def register_user(
     req: RegisterUserRequest, dbsession: Session = Depends(deps.get_db_session)
 ) -> APIResponse:
 
-    u = models.db.User(
+    u = database.user.User(
         username=req.username, nickname=req.nickname, avatar="avatar.jpg"
     )
     dbsession.add(u)
@@ -36,8 +37,8 @@ async def register_user(
 
     assert u.id
 
-    s = models.db.MagicPointSubscription(
-        uid=u.id, stype=models.db.SubscriptionType.trail, init=1000, remains=1000
+    s = database.subscription.Subscription(
+        uid=u.id, stype=database.subscription.Type.trail, init=1000, remains=1000
     )
     dbsession.add(s)
     dbsession.commit()
@@ -52,7 +53,9 @@ async def user_login(
     dbsession: Session = Depends(deps.get_db_session),
     rdb: redis.asyncio.Redis = Depends(deps.get_rdb),
 ) -> APIResponse:
-    query = select(models.db.User).where(models.db.User.username == req.username)
+    query = select(database.user.User).where(
+        database.user.User.username == req.username
+    )
     u = dbsession.exec(query).one_or_none()
     if u is None:
         return APIResponse(code=1, msg="no such user")

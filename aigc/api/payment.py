@@ -48,7 +48,7 @@ async def open_payment(
     url = await wx_client.open_transaction(order)
     logger.info(f"recharge order {tradeid} pay url: {url}")
 
-    payment = models.db.Recharge(
+    payment = models.database.pay.Recharge(
         uid=ses.uid,
         tradeid=tradeid,
         amount=req.amount,
@@ -67,7 +67,7 @@ async def get_payment_state(
 ) -> models.payment.GetPaymentStateResponse:
 
     order = db.exec(
-        select(models.db.Recharge).where(models.db.Recharge.tradeid == tradeid)
+        select(models.database.pay.Recharge).where(models.database.pay.Recharge.tradeid == tradeid)
     ).one_or_none()
     if order is None:
         logger.error(f"no such recharge order which trade id is {tradeid}")

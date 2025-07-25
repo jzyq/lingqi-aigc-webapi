@@ -10,7 +10,11 @@ from loguru import logger
 from threading import Thread
 
 
-def main(configpath: str, inference_dispatch: bool = False, dev: bool = False) -> None:
+def main(
+    configpath: str,
+    dev: bool = False,
+    no_remote_config: bool = False,
+) -> None:
 
     # Load config.
     config.set_config_file_path(configpath)
@@ -36,24 +40,18 @@ def main(configpath: str, inference_dispatch: bool = False, dev: bool = False) -
     )
     refresh_thread.start()
 
-    # if inference dispatcher needed, start dispatch server.
-    if inference_dispatch:
-        logger.info("with inference dispatch with process")
-        rdb = redis.Redis(
-            host=conf.redis.host,
-            port=conf.redis.port,
-            db=conf.redis.db,
-            decode_responses=True,
-        )
-        srv = infer_dispatch.Server(rdb, db)
-        dispatch_thread = Thread(target=srv.serve_forever, daemon=True)
-        dispatch_thread.start()
+    srv = infer_dispatch.Server(db)
+    dispatch_thread = Thread(target=srv.serve_forever, daemon=True)
+    dispatch_thread.start()
 
     # mainpage remote config sync.
     conf_sync = mainpage_config.MainPageRemoteConfig(conf.redis, conf.remote_config)
-    conf_sync.refresh_banner()
-    conf_sync.refresh_magic()
-    conf_sync.refresh_shortcut()
+    if not no_remote_config:
+        conf_sync.refresh_banner()
+        conf_sync.refresh_magic()
+        conf_sync.refresh_shortcut()
+    else:
+        logger.info("do not refresh remote config")
 
     # Use app lifespan function to cleanup resource after shutdown.
     @asynccontextmanager
@@ -87,13 +85,10 @@ if __name__ == "__main__":
     parser = ArgumentParser()
     parser.add_argument("--config", help="The config file path.", default="config.toml")
     parser.add_argument(
-        "--with-inference-dispatch",
-        help="Run infernece dispatcher in a thread within main process",
-        action="store_true",
-        dest="with_dispatcher",
+        "--dev", help="Run in develop mode.", action="store_true", dest="dev"
     )
     parser.add_argument(
-        "--dev", help="Run in develop mode.", action="store_true", dest="dev"
+        "--no-remote-config", action="store_true", dest="no_remote_config"
     )
     arguments = parser.parse_args()
 
@@ -102,6 +97,6 @@ if __name__ == "__main__":
 
     main(
         configpath=arguments.config,
-        inference_dispatch=arguments.with_dispatcher,
         dev=arguments.dev,
+        no_remote_config=arguments.no_remote_config,
     )
