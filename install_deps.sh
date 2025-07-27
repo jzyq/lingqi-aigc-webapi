@@ -1,1 +1,0 @@
-conda create python=3.11 -y --prefix ./.venv  --file requirements.txt

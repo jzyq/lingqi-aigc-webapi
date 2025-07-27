@@ -1,0 +1,22 @@
+CREATE SCHEMA IF NOT EXISTS aigc DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+CREATE USER IF NOT EXISTS 'aigc'@'%' IDENTIFIED BY 'q1w2e3r4';
+GRANT ALTER ROUTINE ON aigc.* TO 'aigc'@'%';
+GRANT CREATE ROUTINE ON aigc.* TO 'aigc'@'%';
+GRANT CREATE TEMPORARY TABLES ON aigc.* TO 'aigc'@'%';
+GRANT EXECUTE ON aigc.* TO 'aigc'@'%';
+GRANT LOCK TABLES ON aigc.* TO 'aigc'@'%';
+GRANT GRANT OPTION ON aigc.* TO 'aigc'@'%';
+GRANT ALTER ON aigc.* TO 'aigc'@'%';
+GRANT CREATE ON aigc.* TO 'aigc'@'%';
+GRANT CREATE VIEW ON aigc.* TO 'aigc'@'%';
+GRANT DELETE ON aigc.* TO 'aigc'@'%';
+GRANT DROP ON aigc.* TO 'aigc'@'%';
+GRANT GRANT OPTION ON aigc.* TO 'aigc'@'%';
+GRANT INDEX ON aigc.* TO 'aigc'@'%';
+GRANT INSERT ON aigc.* TO 'aigc'@'%';
+GRANT REFERENCES ON aigc.* TO 'aigc'@'%';
+GRANT SELECT ON aigc.* TO 'aigc'@'%';
+GRANT SHOW VIEW ON aigc.* TO 'aigc'@'%';
+GRANT TRIGGER ON aigc.* TO 'aigc'@'%';
+GRANT UPDATE ON aigc.* TO 'aigc'@'%';

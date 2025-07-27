@@ -1,1 +1,0 @@
-source $CONDA_PREFIX/bin/activate ./.venv && python app.py $*

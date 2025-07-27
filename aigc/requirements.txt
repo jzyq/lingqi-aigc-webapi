@@ -1,0 +1,10 @@
+redis[hiredis]
+fastapi
+uvicorn
+loguru
+sqlmodel
+zhipuai
+httpx
+pycryptodome
+python-dateutil
+mysql-connector-python
