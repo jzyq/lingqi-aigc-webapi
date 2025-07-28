@@ -5,6 +5,8 @@ services:
     build:
       context: .
       dockerfile: nginx/Dockerfile
+    depends_on:
+      - webapi
     ports:
       - <service port>:80
 
