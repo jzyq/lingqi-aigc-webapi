@@ -8,6 +8,8 @@ TODO.txt
 .dev
 *.ffs_gui
 *.ffs_db
-.*
+.coverage
+.vscode
+.DS_Store
 *.log
 static
