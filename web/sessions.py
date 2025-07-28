@@ -3,7 +3,7 @@ import random
 from pydantic import BaseModel
 from datetime import datetime, timedelta
 
-from . import config
+import config
 
 
 random.seed()

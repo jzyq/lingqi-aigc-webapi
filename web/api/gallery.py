@@ -1,10 +1,10 @@
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
-from .. import sessions, deps
+import sessions, deps
 import sqlmodel
 from typing import Any
 import json
-from ..models import database
+import database
 
 
 class InferenceDetail(BaseModel):

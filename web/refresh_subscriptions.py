@@ -2,10 +2,9 @@ from sqlmodel import select, Session
 from sqlalchemy import Engine
 from datetime import datetime, timedelta
 from loguru import logger
-from . import models
 import asyncio
 import time
-
+import database
 
 # FIXME: when near middle, it may return 0 second delay.
 def delay_to_next_middle_night(now: datetime) -> int:
@@ -19,8 +18,8 @@ def delay_to_next_middle_night(now: datetime) -> int:
 def refresh_subscriptions(db: Engine, dt: datetime):
     with Session(db) as session:
         subscriptions = session.exec(
-            select(models.database.subscription.Subscription).where(
-                models.database.subscription.Subscription.expired == False
+            select(database.subscription.Subscription).where(
+                database.subscription.Subscription.expired == False
             )
         ).all()
 
@@ -34,7 +33,7 @@ def refresh_subscriptions(db: Engine, dt: datetime):
             else:
                 s.remains = s.init
 
-        log = models.database.subscription.RefreshLog(refresh_time=dt, cnt=len(subscriptions))
+        log = database.subscription.RefreshLog(refresh_time=dt, cnt=len(subscriptions))
 
         session.add(log)
         session.commit()
@@ -64,8 +63,8 @@ def arrage_refresh_subscriptions(db: Engine) -> None:
     # Check if already refreshed today.
     with Session(db) as session:
         logs = session.exec(
-            select(models.database.subscription.RefreshLog).where(
-                models.database.subscription.RefreshLog.refresh_time >= this_middle_night
+            select(database.subscription.RefreshLog).where(
+                database.subscription.RefreshLog.refresh_time >= this_middle_night
             )
         ).all()
 

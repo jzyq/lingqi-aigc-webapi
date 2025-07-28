@@ -3,7 +3,7 @@ import json
 import time
 from urllib.parse import quote_plus
 import httpx
-from ..config import WechatSecretConfig
+from config import WechatSecretConfig
 
 
 WX_MAIN_HOST = "https://api.mch.weixin.qq.com"

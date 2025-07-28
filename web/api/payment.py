@@ -1,8 +1,9 @@
 from fastapi import APIRouter, HTTPException, Depends
-from .. import deps, wx, models, config, common
+import deps, wx, models, config, common
 from loguru import logger
 from datetime import datetime, timedelta
 from sqlmodel import select, Session
+import database
 
 router = APIRouter(prefix="/payment")
 
@@ -48,7 +49,7 @@ async def open_payment(
     url = await wx_client.open_transaction(order)
     logger.info(f"recharge order {tradeid} pay url: {url}")
 
-    payment = models.database.pay.Recharge(
+    payment = database.pay.Recharge(
         uid=ses.uid,
         tradeid=tradeid,
         amount=req.amount,
@@ -67,7 +68,7 @@ async def get_payment_state(
 ) -> models.payment.GetPaymentStateResponse:
 
     order = db.exec(
-        select(models.database.pay.Recharge).where(models.database.pay.Recharge.tradeid == tradeid)
+        select(database.pay.Recharge).where(database.pay.Recharge.tradeid == tradeid)
     ).one_or_none()
     if order is None:
         logger.error(f"no such recharge order which trade id is {tradeid}")

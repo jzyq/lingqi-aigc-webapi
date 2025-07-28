@@ -1,8 +1,8 @@
-from .remote_config import AuthToken, Bitable
+from remote_config import AuthToken, Bitable
 from loguru import logger
 import redis
-from .config import RedisConfig, RemoteConfig
-from .models import mainpage
+from config import RedisConfig, RemoteConfig
+from models import mainpage
 import httpx
 import secrets
 import os

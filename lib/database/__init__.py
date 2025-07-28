@@ -1,4 +1,4 @@
-from . import config  # type: ignore
+from . import config, inference, subscription, user, pay, wechat  # type: ignore
 from sqlalchemy import Engine
 from sqlmodel import create_engine  # type: ignore
 

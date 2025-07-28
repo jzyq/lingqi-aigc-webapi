@@ -13,8 +13,8 @@ from pydantic import BaseModel, ValidationError
 from sqlalchemy import Engine
 from sqlmodel import Session, select
 
-from .. import config, deps, infer_dispatch, prompt_translate, sessions
-from ..models import database
+import config, deps, infer_dispatch, prompt_translate, sessions
+import database
 
 
 # Exception raised when user try call infer API but do not have enough points.

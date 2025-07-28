@@ -1,6 +1,6 @@
 import redis.asyncio
 import uvicorn
-from aigc import config, api, infer_dispatch, refresh_subscriptions, mainpage_config
+import config, api, infer_dispatch, refresh_subscriptions, mainpage_config
 from argparse import ArgumentParser
 import redis
 from contextlib import asynccontextmanager

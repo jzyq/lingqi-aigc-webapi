@@ -1,8 +1,8 @@
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, TypeAdapter
 import redis.asyncio
-from .. import models, deps
-from ..mainpage_config import BannerItem
+import models, deps
+from mainpage_config import BannerItem
 
 
 class APIResponse(BaseModel):

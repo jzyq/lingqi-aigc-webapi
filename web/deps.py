@@ -4,7 +4,7 @@ from fastapi import Depends, Request, FastAPI, HTTPException, Header
 from sqlmodel import Session
 from sqlalchemy import Engine
 import redis.asyncio as redis
-from . import infer_dispatch, sessions, config, wx, models, prompt_translate
+import infer_dispatch, sessions, config, wx, models, prompt_translate
 
 
 def get_app(req: Request) -> FastAPI:

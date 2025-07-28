@@ -1,0 +1,69 @@
+services:
+
+  nginx:
+    image: aigc-nginx
+    build:
+      context: .
+      dockerfile: nginx/Dockerfile
+    ports:
+      - <service port>:80
+
+  admin:
+    image: aigc-admin
+    build:
+      context: .
+      dockerfile: admin/Dockerfile
+
+  webapi:
+    image: aigc-webapi
+    build:
+      context: .
+      dockerfile: web/Dockerfile
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    deploy:
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 5
+        window: 60s
+    volumes:
+      - <path to your config file>:/app/config.toml
+      - <path to your static files folder>:/app/static
+
+  mysql:
+    image: aigc-mysql
+    restart: always
+    build:
+      context: .
+      dockerfile: mysql/Dockerfile
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    environment:
+      - MYSQL_ROOT_PASSWORD=<root password if needed>
+    volumes:
+      - <path to your mysql data folder>:/var/lib/mysql
+    ports:
+      # expose mysql service port if needed.
+      - 33306:3306
+
+  redis:
+    image: redis:8.0
+    restart: always
+    healthcheck:
+      test: ["CMD", "redis-cli", "PING"]
+      interval: 1s
+      timeout: 5s
+      retries: 10
+    command: ["redis-server", "--save", "60 1"]
+    volumes:
+      - <path to your redis data folder>:/data
+    ports:
+      # expose redis port if needed.
+      - 63790:6379

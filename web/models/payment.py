@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from . import database
+import database
 
 
 class OpenPaymentRequest(BaseModel):

@@ -13,7 +13,7 @@ from pydantic import BaseModel
 import time
 import asyncio
 
-from .models.database import inference, subscription
+from database import inference, subscription
 
 TOKEN_LEN = 8
 RESPONSE_UNSET = "response_unset"

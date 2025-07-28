@@ -2,13 +2,14 @@ from fastapi import APIRouter, Request, HTTPException, Response, Header, Depends
 from sqlmodel import select, Session
 from fastapi.responses import RedirectResponse
 
-from .. import deps, sessions, models, config, wx as wechat, common
+import deps, sessions, models, config, wx as wechat, common
 import json
 from loguru import logger
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
 
 from typing import Annotated
+import database
 
 
 router = APIRouter(prefix="/wx")
@@ -37,8 +38,8 @@ async def wechat_login_callback(
         raise HTTPException(status_code=500, detail=e.msg)
 
     exists_wxuinfo = db.exec(
-        select(models.database.wechat.UserInfo).where(
-            models.database.wechat.UserInfo.unionid == user_info.unionid
+        select(database.wechat.UserInfo).where(
+            database.wechat.UserInfo.unionid == user_info.unionid
         )
     ).one_or_none()
 
@@ -46,7 +47,7 @@ async def wechat_login_callback(
     if exists_wxuinfo is not None:
         logger.debug(f"already have user {exists_wxuinfo.unionid}")
 
-        user = db.get(models.database.user.User, exists_wxuinfo.uid)
+        user = db.get(database.user.User, exists_wxuinfo.uid)
         assert user is not None and user.id is not None
 
         # If already login and valid, use same one.
@@ -67,7 +68,7 @@ async def wechat_login_callback(
         logger.info(f"new wx user {user_info.unionid} register.")
 
         # Create new user.
-        new_user = models.database.user.User(
+        new_user = database.user.User(
             username=f"wx_{user_info.unionid}",
             nickname=user_info.nickname,
             avatar=user_info.headimgurl,
@@ -80,7 +81,7 @@ async def wechat_login_callback(
         # Associate user and wx user info then write to database.
         assert new_user.id is not None
 
-        wx_record = models.database.wechat.UserInfo(
+        wx_record = database.wechat.UserInfo(
             openid=user_info.openid,
             uid=new_user.id,
             avatar=user_info.headimgurl,
@@ -93,9 +94,9 @@ async def wechat_login_callback(
         # Give a init point subscription.
         dt = datetime.now()
         init_point = conf.magic_points.trail_free_point
-        subscription = models.database.subscription.Subscription(
+        subscription = database.subscription.Subscription(
             uid=new_user.id,
-            stype=models.database.subscription.Type.trail,
+            stype=database.subscription.Type.trail,
             init=init_point,
             remains=init_point,
             ctime=dt,
@@ -143,8 +144,8 @@ async def wechat_pay_callback(
     logger.debug(result.model_dump_json())
 
     recharage_order = db.exec(
-        select(models.database.pay.Recharge).where(
-            models.database.pay.Recharge.tradeid == result.out_trade_no
+        select(database.pay.Recharge).where(
+            database.pay.Recharge.tradeid == result.out_trade_no
         )
     ).one()
 
@@ -156,10 +157,10 @@ async def wechat_pay_callback(
     recharage_order.reason = result.trade_state_desc
     if result.trade_state != "SUCCESS":
         logger.warning(f"pay failed of trade {result.out_trade_no}")
-        recharage_order.pay_state = models.database.pay.State.failed
+        recharage_order.pay_state = database.pay.State.failed
     else:
         logger.info(f"pay success of trade {result.out_trade_no}")
-        recharage_order.pay_state = models.database.pay.State.success
+        recharage_order.pay_state = database.pay.State.success
 
         # TODO: update user subscription.
         subplan: config.MagicPointSubscription | None = None
@@ -171,12 +172,12 @@ async def wechat_pay_callback(
 
         # Expire current subscription.
         current_sub = db.exec(
-            select(models.database.subscription.Subscription)
-            .where(models.database.subscription.Subscription.uid == recharage_order.uid)
-            .where(models.database.subscription.Subscription.expired == False)
+            select(database.subscription.Subscription)
+            .where(database.subscription.Subscription.uid == recharage_order.uid)
+            .where(database.subscription.Subscription.expired == False)
             .where(
-                models.database.subscription.Subscription.stype
-                == models.database.subscription.Type.subscription
+                database.subscription.Subscription.stype
+                == database.subscription.Type.subscription
             )
         ).one_or_none()
 
@@ -188,9 +189,9 @@ async def wechat_pay_callback(
         expires_in = dt.replace(
             hour=0, minute=0, second=0, microsecond=0
         ) + relativedelta(months=subplan.month)
-        newsub = models.database.subscription.Subscription(
+        newsub = database.subscription.Subscription(
             uid=recharage_order.uid,
-            stype=models.database.subscription.Type.subscription,
+            stype=database.subscription.Type.subscription,
             init=subplan.points,
             remains=subplan.points,
             ctime=dt,

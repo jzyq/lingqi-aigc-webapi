@@ -2,8 +2,8 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 import redis.asyncio
 from sqlmodel import Session, select
-from .. import deps, sessions
-from ..models import database
+import deps, sessions
+import database
 
 router = APIRouter()
 
