@@ -241,7 +241,7 @@ class Server:
             url = log.url
             body = json.loads(log.request)
             tid = log.tid
-
+        
         try:
             with httpx.Client(timeout=None) as client:
                 resp = client.post(url=url, json=body)
@@ -267,13 +267,15 @@ class Server:
             with Session(self._db) as session:
                 session.add(log)
                 session.commit()
+                session.refresh(log)
+
+                tid = log.tid
+                point = log.point
 
             with current_subscription(log.uid, self._db) as s:
                 s.remains += log.point
 
-            logger.error(
-                f"inference {log.tid} error, {str(e)}, recharge point {log.point}"
-            )
+            logger.error(f"inference {tid} error, {str(e)}, recharge point {point}")
 
     def serve_forever(self) -> None:
         while True:
@@ -286,6 +288,10 @@ class Server:
             with Session(self._db) as session:
                 waiting_inference = session.exec(query).all()
 
-            for i in waiting_inference:
-                self.dispatch(i)
-                time.sleep(1)
+            try:
+                for i in waiting_inference:
+                    self.dispatch(i)
+            except Exception as exc:
+                logger.error(f"unexpect error: {exc}")
+
+            time.sleep(1)
