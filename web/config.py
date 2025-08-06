@@ -1,117 +1,28 @@
 import tomllib
 from functools import cache
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-@dataclass
-class WebConfig:
-    host: str = "127.0.0.1"
-    port: int = 8000
-    session_ttl: int = 3600
+class AppConfig(BaseSettings):
 
-    @staticmethod
-    def load(toml: dict[str, Any]) -> "WebConfig":
-        host: str = toml["host"]
-        port: int = int(toml["port"])
-        session_ttl: int = int(toml["session_ttl"])
+    model_config = SettingsConfigDict(env_file=".env")
 
-        return WebConfig(host=host, port=port, session_ttl=session_ttl)
+    mode: Literal["prod", "dev"] = "prod"
 
+    api_host: str = "0.0.0.0"
+    api_port: int = 80
 
-@dataclass
-class RedisConfig:
-    host: str = "127.0.0.1"
-    port: int = 6379
-    db: int = 0
+    redis_host: str = "redis"
+    redis_port: int = 6379
+    redis_db: int = 0
 
-    @staticmethod
-    def load(toml: dict[str, Any]) -> "RedisConfig":
-        host: str = toml["host"]
-        port: int = int(toml["port"])
-        db: int = int(toml["db"])
+    db_url: str = "mysql+mysqlconnector://aigc:q1w2e3r4@mysql:3306/aigc"
 
-        return RedisConfig(host=host, port=port, db=db)
-
-
-@dataclass
-class DatabaseConfig:
-    url: str = ""
-
-    @staticmethod
-    def load(toml: dict[str, Any]) -> "DatabaseConfig":
-        url: str = toml["url"]
-        return DatabaseConfig(url=url)
-
-
-@dataclass
-class WechatSecretConfig:
-    login_id: str = ""
-    app_id: str = ""
-    app_secret: str = ""
-    mch_id: str = ""
-    mch_cert_serial: str = ""
-    pub_key_id: str = ""
-    api_v3_pwd: str = ""
-    api_client_key_path: str = ""
-    pub_key_path: str = ""
-
-    api_client_key: bytes = b""
-    pub_key: bytes = b""
-
-    @staticmethod
-    def load(toml: dict[str, Any]) -> "WechatSecretConfig":
-
-        login_id: str = toml["login_id"]
-        app_id: str = toml["app_id"]
-        app_secret: str = toml["app_secret"]
-        mch_id: str = toml["mch_id"]
-        mch_cert_serial: str = toml["mch_cert_serial"]
-        pub_key_id: str = toml["pub_key_id"]
-        api_v3_pwd: str = toml["api_v3_pwd"]
-        api_client_key_path: str = toml["api_client_key_path"]
-        pub_key_path: str = toml["pub_key_path"]
-
-        with open(api_client_key_path, "rb") as fp:
-            api_client_key: bytes = fp.read()
-
-        with open(pub_key_path, "rb") as fp:
-            pub_key: bytes = fp.read()
-
-        return WechatSecretConfig(
-            login_id=login_id,
-            app_id=app_id,
-            app_secret=app_secret,
-            mch_id=mch_id,
-            mch_cert_serial=mch_cert_serial,
-            pub_key_id=pub_key_id,
-            api_v3_pwd=api_v3_pwd,
-            api_client_key_path=api_client_key_path,
-            pub_key_path=pub_key_path,
-            api_client_key=api_client_key,
-            pub_key=pub_key,
-        )
-
-
-@dataclass
-class WechatConfig:
-    secrets: WechatSecretConfig = field(default_factory=WechatSecretConfig)
-    login_redirect: str = "/aigc/api/wx/login/callback"
-    payment_callback: str = "/aigc/api/wx/pay/callback"
-    payment_expires: int = 300
-
-    @staticmethod
-    def load(toml: dict[str, Any]) -> "WechatConfig":
-        login_redirect: str = toml["login_redirect"]
-        payment_callback: str = toml["payment_callback"]
-        payment_expires: int = int(toml["payment_expires"])
-
-        return WechatConfig(
-            secrets=WechatSecretConfig.load(toml["secrets"]),
-            login_redirect=login_redirect,
-            payment_callback=payment_callback,
-            payment_expires=payment_expires,
-        )
+    storage_endpoint: str = "minio:9000"
+    storage_user: str = "minioadmin"
+    storage_password: str = "minioadmin"
 
 
 @dataclass
@@ -198,10 +109,6 @@ class RemoteConfig:
 # Just read this config when needed.
 @dataclass
 class Config:
-    web: WebConfig = field(default_factory=WebConfig)
-    redis: RedisConfig = field(default_factory=RedisConfig)
-    database: DatabaseConfig = field(default_factory=DatabaseConfig)
-    wechat: WechatConfig = field(default_factory=WechatConfig)
     magic_points: MagicPointConfig = field(default_factory=MagicPointConfig)
     infer: InferConfig = field(default_factory=InferConfig)
     prompt_translate: PromptTranslate = field(default_factory=PromptTranslate)
@@ -210,16 +117,13 @@ class Config:
     @staticmethod
     def load(toml: dict[str, Any]) -> "Config":
         return Config(
-            web=WebConfig.load(toml["web"]),
-            redis=RedisConfig.load(toml["redis"]),
-            database=DatabaseConfig.load(toml["database"]),
-            wechat=WechatConfig.load(toml["wechat"]),
             magic_points=MagicPointConfig.load(toml["magic_points"]),
             infer=InferConfig.load(toml["infer"]),
             prompt_translate=PromptTranslate.load(toml["prompt_translate"]),
             remote_config=RemoteConfig.load(toml["remote_config"]),
         )
 
+_default_filepath = "config.toml"
 
 @cache
 def get_config(filepath: str | None = None) -> Config:

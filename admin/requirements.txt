@@ -1,2 +1,8 @@
 fastapi
 uvicorn
+pydantic
+pydantic_settings
+redis[hiredis]
+sqlmodel
+mysql-connector-python
+loguru

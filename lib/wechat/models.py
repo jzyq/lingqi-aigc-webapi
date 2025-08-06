@@ -2,21 +2,6 @@ from pydantic import BaseModel
 from enum import IntEnum
 
 
-class Secrets(BaseModel):
-    login_id: str = ""
-    app_id: str = ""
-    app_secret: str = ""
-    mch_id: str = ""
-    mch_cert_serial: str = ""
-    pub_key_id: str = ""
-    api_v3_pwd: str = ""
-    api_client_key_path: str = ""
-    pub_key_path: str = ""
-
-    api_client_key: bytes = b""
-    pub_key: bytes = b""
-
-
 class PayAmount(BaseModel):
     total: int  # 总金额
     currency: str = "CNY"  # 货币类型

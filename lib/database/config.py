@@ -2,20 +2,18 @@ from sqlmodel import SQLModel, Field
 from enum import StrEnum
 from sqlalchemy import Column
 from sqlalchemy.dialects.mysql import LONGTEXT
-from datetime import datetime
 
 
-class Category(StrEnum):
+class SystemConfigCategory(StrEnum):
     wechat = "wechat"
+    session = "session"
 
 
-class Config(SQLModel, table=True):
+class SystemConfig(SQLModel, table=True):
 
-    __tablename__ = "config"  # type: ignore
+    __tablename__ = "system_config"  # type: ignore
 
     id: int | None = Field(default=None, primary_key=True)
-    category: Category
+    category: SystemConfigCategory
     name: str
-    revision: int
-    ctime: datetime = Field(default_factory=datetime.now)
     value: str = Field(sa_column=Column(LONGTEXT))

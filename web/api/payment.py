@@ -1,5 +1,7 @@
 from fastapi import APIRouter, HTTPException, Depends
-import deps, wx, models, config, common
+import sysconf
+import wechat
+import deps, models, config, common
 from loguru import logger
 from datetime import datetime, timedelta
 from sqlmodel import select, Session
@@ -14,7 +16,8 @@ async def open_payment(
     ses: deps.UserSession,
     db: Session = Depends(deps.get_db_session),
     conf: config.Config = Depends(config.get_config),
-    wx_client: wx.client.WxClient = Depends(deps.get_wxclient),
+    wechat_conf: sysconf.wechat.Config = Depends(deps.get_wechat_conf),
+    wx_client: wechat.client.WxClient = Depends(deps.get_wxclient),
 ) -> models.payment.OpenPaymentResponse:
 
     # Check subscription plans.
@@ -30,19 +33,26 @@ async def open_payment(
         )
 
     dt = datetime.now()
-    tradeid = wx.make_nonce_str(16)
+    tradeid = wechat.make_nonce_str(16)
     desc = f"充值 {subplan.price / 100} 开通 {subplan.month} 月会员"
-    expires_in = dt + timedelta(seconds=conf.wechat.payment_expires)
+
+    if wechat_conf.payment_expires:
+        expires_in = dt + timedelta(seconds=wechat_conf.payment_expires)
+    else:
+        expires_in = dt + timedelta(seconds=7200)
 
     logger.info(
         f"user open new recharge order {tradeid}, amount {req.amount / 100} CNY"
     )
 
-    order = wx.models.Order(
+    if not wechat_conf.payment_callback_url:
+        raise HTTPException(500, "wechat pay callback must be set first.")
+
+    order = wechat.models.Order(
         description=desc,
         out_trade_no=tradeid,
-        notify_url=conf.wechat.payment_callback,
-        amount=wx.models.PayAmount(total=req.amount),
+        notify_url=wechat_conf.payment_callback_url,
+        amount=wechat.models.PayAmount(total=req.amount),
         time_expire=common.dt.format_datetime(expires_in),
     )
 

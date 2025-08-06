@@ -7,6 +7,7 @@ services:
       dockerfile: nginx/Dockerfile
     depends_on:
       - webapi
+      - admin
     ports:
       - <service port>:80
 
@@ -15,6 +16,19 @@ services:
     build:
       context: .
       dockerfile: admin/Dockerfile
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_started
+    deploy:
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 5
+        window: 60s
 
   webapi:
     image: aigc-webapi
@@ -26,6 +40,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      minio:
+        condition: service_started
     deploy:
       restart_policy:
         condition: on-failure
@@ -69,3 +85,16 @@ services:
     ports:
       # expose redis port if needed.
       - 63790:6379
+
+  minio:
+    image: minio:latest
+    restart: always
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      - MINIO_ROOT_USER=<your root user name>
+      - MINIO_ROOT_PASSWORD=<your root user password>
+    volumes:
+      - <path to you object storage path>:/data
+    ports:
+      - 9000:9000
+      - 9001:9001

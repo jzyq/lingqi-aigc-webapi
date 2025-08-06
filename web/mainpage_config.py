@@ -1,13 +1,14 @@
 from remote_config import AuthToken, Bitable
 from loguru import logger
 import redis
-from config import RedisConfig, RemoteConfig
+from config import AppConfig, RemoteConfig
 from models import mainpage
 import httpx
 import secrets
-import os
 from pydantic import BaseModel, TypeAdapter
 import json
+import minio  # type: ignore
+import io
 
 BANNER_KEY = "banner配置"
 MAGIC_KEY = "magic配置"
@@ -24,17 +25,23 @@ class BannerItem(BaseModel):
 
 class MainPageRemoteConfig:
 
-    def __init__(self, redis_conf: RedisConfig, remote_conf: RemoteConfig) -> None:
+    def __init__(self, conf: AppConfig, remote_conf: RemoteConfig) -> None:
         self._rdb: redis.Redis = redis.Redis(
-            host=redis_conf.host,
-            port=redis_conf.port,
-            db=redis_conf.db,
+            host=conf.redis_host,
+            port=conf.redis_port,
+            db=conf.redis_db,
             decode_responses=True,
         )
 
-        self._auth_token: AuthToken = AuthToken(
-            remote_conf.app_id, remote_conf.secret)
+        self._auth_token: AuthToken = AuthToken(remote_conf.app_id, remote_conf.secret)
         self._bid: str = remote_conf.bitable_id
+
+        self._mc = minio.Minio(
+            endpoint=conf.storage_endpoint,
+            access_key=conf.storage_user,
+            secret_key=conf.storage_password,
+            secure=False,
+        )
 
     def refresh_banner(self) -> None:
         logger.info("pulling banner config from remote ...")
@@ -61,8 +68,8 @@ class MainPageRemoteConfig:
 
                 banner_items.append(
                     BannerItem(
-                        image=f"/aigc/api/download/{image_filepath}",
-                        video=f"/aigc/api/download/{video_filepath}",
+                        image=f"/aigc/api/download/mainpage/{image_filepath}",
+                        video=f"/aigc/api/download/mainpage/{video_filepath}",
                     )
                 )
 
@@ -97,8 +104,8 @@ class MainPageRemoteConfig:
                 continue
 
             sc = mainpage.Showcase(
-                original=f"/aigc/api/download/{original_filename}",
-                result=f"/aigc/api/download/{result_filename}",
+                original=f"/aigc/api/download/mainpage/{original_filename}",
+                result=f"/aigc/api/download/mainpage/{result_filename}",
             )
 
             if link_id not in magic_name_by_id:
@@ -131,25 +138,20 @@ class MainPageRemoteConfig:
 
         partial = mainpage.ShowcasesAndPrompts(
             showcase=(
-                showcases_by_name["partial"] if "partial" in showcases_by_name else [
-                ]
+                showcases_by_name["partial"] if "partial" in showcases_by_name else []
             ),
-            prompts=prompts_by_name["partial"] if "partial" in prompts_by_name else [
-            ],
+            prompts=prompts_by_name["partial"] if "partial" in prompts_by_name else [],
         )
         powerful = mainpage.ShowcasesAndPrompts(
             showcase=(
-                showcases_by_name["powerful"] if "powerful" in showcases_by_name else [
-                ]
+                showcases_by_name["powerful"] if "powerful" in showcases_by_name else []
             ),
             prompts=(
-                prompts_by_name["powerful"] if "powerful" in prompts_by_name else [
-                ]
+                prompts_by_name["powerful"] if "powerful" in prompts_by_name else []
             ),
         )
         i2v = mainpage.ShowcasesAndPrompts(
-            showcase=showcases_by_name["i2v"] if "i2v" in showcases_by_name else [
-            ],
+            showcase=showcases_by_name["i2v"] if "i2v" in showcases_by_name else [],
             prompts=prompts_by_name["i2v"] if "i2v" in prompts_by_name else [],
         )
 
@@ -162,7 +164,12 @@ class MainPageRemoteConfig:
 
         shortcuts: list[mainpage.Shortcut] = []
 
-        for r in Bitable(self._auth_token, self._bid).table("shortcut配置").view("表格").rows():
+        for r in (
+            Bitable(self._auth_token, self._bid)
+            .table("shortcut配置")
+            .view("表格")
+            .rows()
+        ):
             _type = r.col("type")
             magic = r.col("magic")
             teach = r.col("teach")
@@ -174,9 +181,10 @@ class MainPageRemoteConfig:
 
             s = mainpage.Shortcut(
                 type=_type.value,
-                magic=f"/aigc/api/download/{magic_file_name}",
-                teach=f"/aigc/api/download/{teach_file_name}",
-                params=params_body)
+                magic=f"/aigc/api/download/mainpage/{magic_file_name}",
+                teach=f"/aigc/api/download/mainpage{teach_file_name}",
+                params=params_body,
+            )
             shortcuts.append(s)
 
         adapter = TypeAdapter(list[mainpage.Shortcut])
@@ -189,19 +197,23 @@ class MainPageRemoteConfig:
             url, headers={"authorization": f"bearer {self._auth_token}"}
         ).raise_for_status()
 
+        bucket_name = "mainpage"
+        object_name = secrets.token_hex(8)
         media_type: str = resp.headers["content-type"]
         size: int = int(resp.headers["content-length"])
 
-        extend_name = media_type.split("/")[1]
-        filename = f"{secrets.token_hex(8)}.{extend_name}"
+        if not self._mc.bucket_exists(bucket_name):
+            self._mc.make_bucket(bucket_name)
 
-        if not os.path.exists("static"):
-            os.mkdir("static")
-
-        with open("static/" + filename, "wb") as fp:
-            fp.write(resp.content)
+        self._mc.put_object(
+            bucket_name,
+            object_name,
+            io.BytesIO(resp.content),
+            length=size,
+            content_type=media_type,
+        )
 
         logger.info(
-            f"resource download complete, type: {media_type}, size: {size}, filename {filename}"
+            f"resource download complete, type: {media_type}, size: {size}, filename {object_name}"
         )
-        return filename
+        return object_name

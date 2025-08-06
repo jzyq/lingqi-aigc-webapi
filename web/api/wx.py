@@ -2,7 +2,7 @@ from fastapi import APIRouter, Request, HTTPException, Response, Header, Depends
 from sqlmodel import select, Session
 from fastapi.responses import RedirectResponse
 
-import deps, sessions, models, config, wx as wechat, common
+import deps, sessions, models, config, common
 import json
 from loguru import logger
 from datetime import datetime
@@ -10,6 +10,8 @@ from dateutil.relativedelta import relativedelta
 
 from typing import Annotated
 import database
+import wechat
+import sysconf
 
 
 router = APIRouter(prefix="/wx")
@@ -120,7 +122,7 @@ async def wechat_pay_callback(
     wechatpay_signature: Annotated[str, Header()],
     db: Session = Depends(deps.get_db_session),
     wx: wechat.client.WxClient = Depends(deps.get_wxclient),
-    conf: config.Config = Depends(config.get_config)
+    conf: config.Config = Depends(config.get_config),
 ) -> Response:
 
     body = await request.body()
@@ -210,7 +212,9 @@ async def wechat_pay_callback(
 
 @router.get("/qrlogin")
 async def qrcode_login(
-    conf: config.Config = Depends(config.get_config),
+    conf: sysconf.wechat.Config = Depends(deps.get_wechat_conf),
     wx: wechat.client.WxClient = Depends(deps.get_wxclient),
 ):
-    return RedirectResponse(url=wx.get_qrcode_login_url(conf.wechat.login_redirect, ""))
+    if not conf.login_redirect_url:
+        raise HTTPException(500, "wechat login redirect url must set first.")
+    return RedirectResponse(url=wx.get_qrcode_login_url(conf.login_redirect_url, ""))

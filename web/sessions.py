@@ -3,8 +3,6 @@ import random
 from pydantic import BaseModel
 from datetime import datetime, timedelta
 
-import config
-
 
 random.seed()
 
@@ -27,7 +25,7 @@ def generate_new_token(k: int) -> str:
 
 async def create_new_session(rdb: redis.Redis, uid: int, nickname: str) -> str:
     dt = datetime.now()
-    ttl = config.Config().web.session_ttl
+    ttl = 7200
     session = Session(
         uid=uid, nickname=nickname, login_time=dt, expires=dt + timedelta(seconds=ttl)
     )
@@ -58,7 +56,7 @@ async def refresh_session(rdb: redis.Redis, token: str):
     if ses is None:
         return
 
-    ttl = config.Config().web.session_ttl
+    ttl = 7200
     ses.expires = datetime.now() + timedelta(seconds=ttl)
     await rdb.set(SESSION_KEY.format(token), ses.model_dump_json(), ex=ttl)
 

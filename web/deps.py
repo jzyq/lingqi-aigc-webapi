@@ -4,7 +4,10 @@ from fastapi import Depends, Request, FastAPI, HTTPException, Header
 from sqlmodel import Session
 from sqlalchemy import Engine
 import redis.asyncio as redis
-import infer_dispatch, sessions, config, wx, models, prompt_translate
+import infer_dispatch, sessions, config, models, prompt_translate
+import sysconf
+import wechat
+import minio  # type: ignore
 
 
 def get_app(req: Request) -> FastAPI:
@@ -52,10 +55,17 @@ async def get_user_session(rdb: Rdb, token: AuthToken) -> sessions.Session:
 UserSession = Annotated[sessions.Session, Depends(get_user_session)]
 
 
+def get_wechat_conf(db: Engine = Depends(get_db_engine)) -> sysconf.wechat.Config:
+    return sysconf.wechat.Config(db)
+
+
 def get_wxclient(
-    conf: config.Config = Depends(config.get_config),
-) -> wx.client.WxClient:
-    return wx.client.new_client(conf.wechat.secrets)
+    conf: sysconf.wechat.Config = Depends(get_wechat_conf),
+) -> wechat.client.WxClient:
+    secrets = conf.secrets
+    if not secrets:
+        raise HTTPException(500, "wechat secrets must be set property first")
+    return wechat.client.new_client(secrets)
 
 
 def get_main_page_data() -> models.mainpage.MainPageData:
@@ -71,6 +81,11 @@ def get_translator(
     return prompt_translate.ZhipuaiClient(conf.prompt_translate.api_key)
 
 
-def get_inference_client(db: Engine = Depends(get_db_engine)
-) -> infer_dispatch.Client:
+def get_inference_client(db: Engine = Depends(get_db_engine)) -> infer_dispatch.Client:
     return infer_dispatch.Client(db)
+
+
+def get_minio_client(
+    conf: config.AppConfig = Depends(lambda: config.AppConfig()),
+) -> minio.Minio:
+    return minio.Minio(conf.storage_endpoint, conf.storage_user, conf.storage_password, secure=False)
