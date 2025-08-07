@@ -182,7 +182,7 @@ class MainPageRemoteConfig:
             s = mainpage.Shortcut(
                 type=_type.value,
                 magic=f"/aigc/api/download/mainpage/{magic_file_name}",
-                teach=f"/aigc/api/download/mainpage{teach_file_name}",
+                teach=f"/aigc/api/download/mainpage/{teach_file_name}",
                 params=params_body,
             )
             shortcuts.append(s)
