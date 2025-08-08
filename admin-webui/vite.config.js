@@ -8,7 +8,7 @@ export default defineConfig({
   server: {
     proxy: {
       '/aigc/admin/api': {
-        target: 'http://localhost:8001', // Your backend server URL
+        target: 'http://localhost:8000', // Your backend server URL
         changeOrigin: true,
       },
     },

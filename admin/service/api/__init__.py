@@ -1,1 +1,1 @@
-from . import system_config, auth  # type: ignore
+from . import system_config, auth, subscriptions  # type: ignore

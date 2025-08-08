@@ -7,7 +7,7 @@ const MainContainer = styled.div`
     padding: 0;
     display: flex;
     position: relative;
-    height: stretch;
+    height: 100%;
     width: stretch;
 `
 
@@ -16,7 +16,7 @@ const SectionSelector = styled.div`
     height: stretch;
     display: flex;
     flex-direction: column;
-    background-color: ${props => props.theme.secondary};
+    background-color: ${props => props.theme.palette.primary.dark};
 `
 
 const Content = styled.div`
@@ -33,7 +33,7 @@ const Tab = styled.div`
     text-align: center;
     color: white;
     :hover {
-        background-color: ${props => props.theme.secnodaryLighten}
+        background-color: ${props => props.theme.palette.primary.light}
     }
 `
 

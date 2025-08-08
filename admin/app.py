@@ -8,6 +8,7 @@ from sqlmodel import create_engine
 import database
 import redis.asyncio
 from os import path
+from loguru import logger
 
 
 @asynccontextmanager
@@ -39,6 +40,7 @@ ui_prefix = ""
 api_prefix = "/api"
 
 if conf.mode == "dev":
+    logger.info("dev mode")
     service_prefix = "/aigc/admin"
     ui_prefix = service_prefix + ui_prefix
     api_prefix = service_prefix + api_prefix
@@ -46,6 +48,7 @@ if conf.mode == "dev":
 # Do not change the order of router define.
 main_router = APIRouter(prefix=api_prefix)
 main_router.include_router(api.system_config.router)
+main_router.include_router(api.subscriptions.router)
 main_router.include_router(api.auth.router)
 app.include_router(main_router)
 

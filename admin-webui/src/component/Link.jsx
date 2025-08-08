@@ -10,7 +10,7 @@ const A = styled.a`
     text-decoration: none;
     color: white;
     :hover {
-        background-color: ${props => props.theme.primaryLighten};
+        background-color: ${props => props.theme.palette.primary.light};
     }
 `
 

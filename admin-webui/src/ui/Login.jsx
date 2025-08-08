@@ -1,7 +1,6 @@
 import styled from "@emotion/styled"
 import { useState, useContext } from "react"
-import useAuthToken from "../lib/Auth"
-import Router from "../lib/Router"
+import AuthProvider from "../lib/Auth"
 
 const StyledContainer = styled.div`
     display: flex;
@@ -43,9 +42,7 @@ export default function Login() {
     const [username, setUsername] = useState("");
     const [password, setPassword] = useState("");
 
-    const [_, setAuthToken] = useAuthToken()
-
-    const [path, navigateTo] = useContext(Router)
+    const [tk, setToken] = useContext(AuthProvider)
 
     const login = () => {
         fetch(LoginURL, {
@@ -66,8 +63,7 @@ export default function Login() {
             if (data.code !== 0) {
                 throw `login failed: ${data.msg}`
             }
-            setAuthToken(data.data.token)
-            navigateTo("/aigc/admin/mainpage")
+            setToken(data.data.token)
         }).catch(alert)
     }
 

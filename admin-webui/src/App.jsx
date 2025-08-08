@@ -1,85 +1,57 @@
-import styled from "@emotion/styled"
 import { useState } from "react"
-import Link from "./component/Link"
-import System from "./ui/System"
-import Theme from "./lib/Theme"
-import { ThemeProvider } from "@emotion/react"
+import { useTheme, ThemeProvider } from '@mui/material/styles';
+import Tabs from "@mui/material/Tabs"
+import Tab from "@mui/material/Tab"
+import Stack from "@mui/material/Stack"
+import Box from "@mui/material/Box"
+import Subscription from "./ui/Subscription";
+import Paper from "@mui/material/Paper";
+import { ConditionContent } from "./component/container";
+import { getLocalAuthToken, setLocalAuthToken, AuthProvider } from "./lib/Auth";
 import Login from "./ui/Login"
-import Router from "./lib/Router"
+import System from "./ui/System"
 
-const AppContainer = styled.div`
-  height: 100vh;
-  width: 100vw;
-  position: relative;
-  display: flex;
-  flex-direction: column;
-`
-
-const HeaderContainer = styled.header`
-  height: 48px;
-  z-index: 1;
-  width: stretch;
-  position: absolute;
-  top: 0;
-  background-color: ${props => props.theme.primary};
-  display: flex;
-  justify-content: space-between;
-`
-
-const MainContainer = styled.div`
-  width: stretch;
-  height: stretch;
-  position: absolute;
-  top: 48px;
-`
-
-const NavBar = styled.div`
-  height: stretch;
-  display: flex;
-  align-items: center;
-`
-
-const routes = {
-    "/login": <Login />,
-    "/mainpage": <Main><h1>mainpage</h1></Main>,
-    "/user": <Main><h1>user</h1></Main>,
-    "/subscription": <Main><h1>subscription</h1></Main>,
-    "/system": <Main><System /></Main>
-}
-
-function route(path) {
-    path = path.replace("/aigc/admin", "")
-    return routes[path]
-}
-
-function Main({ children }) {
-    return <>
-        <HeaderContainer>
-            <NavBar>
-                <Link href="/aigc/admin/mainpage">首页</Link>
-                <Link href="/aigc/admin/user">用户</Link>
-                <Link href="/aigc/admin/subscription">订阅</Link>
-                <Link href="/aigc/admin/system">系统</Link>
-            </NavBar>
-        </HeaderContainer>
-
-        <MainContainer>
-            {children}
-        </MainContainer>
-    </>
-}
 
 export default function App() {
-    const [path, setPath] = useState("/aigc/admin/mainpage")
-    const content = route(path);
+    const theme = useTheme()
+    const [pageIdx, setPageIdx] = useState(0)
+    const [authToken, setAuthToken] = useState(getLocalAuthToken())
+
+    const setToken = tk => {
+        setLocalAuthToken(tk)
+        setAuthToken(tk)
+    }
 
     return (
-        <ThemeProvider theme={new Theme()}>
-            <AppContainer>
-                <Router value={[path, setPath]}>
-                    {content}
-                </Router>
-            </AppContainer>
+        <ThemeProvider theme={theme}>
+            <AuthProvider value={[authToken, setToken]}>
+                <Box width={'100vw'} height={'100vh'}>
+
+                    <ConditionContent show={authToken === null}>
+                        <Login />
+                    </ConditionContent>
+
+                    <ConditionContent show={authToken !== null}>
+                        <Stack height='stretch'>
+                            <Paper variant="outlined">
+                                <Tabs value={pageIdx} onChange={(e, v) => setPageIdx(v)}>
+                                    <Tab label="首页设置" value={0} />
+                                    <Tab label="用户管理" value={1} />
+                                    <Tab label="订阅管理" value={2} />
+                                    <Tab label="系统设置" value={3} />
+                                </Tabs>
+                            </Paper>
+                            <Box width={"stretch"} height={"stretch"}>
+                                <ConditionContent show={pageIdx === 0}>mainpage</ConditionContent>
+                                <ConditionContent show={pageIdx === 1}>user</ConditionContent>
+                                <ConditionContent show={pageIdx === 2}><Subscription /></ConditionContent>
+                                <ConditionContent show={pageIdx === 3}><System /></ConditionContent>
+                            </Box>
+                        </Stack>
+                    </ConditionContent>
+
+                </Box>
+            </AuthProvider>
         </ThemeProvider>
     )
 }
