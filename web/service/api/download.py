@@ -2,7 +2,7 @@ from fastapi import APIRouter, Response, Depends
 from fastapi.responses import StreamingResponse
 import minio  # type: ignore
 from urllib3 import BaseHTTPResponse
-import deps
+from .. import deps
 import io
 
 router = APIRouter(prefix="/download")

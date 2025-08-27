@@ -3,8 +3,8 @@ from collections.abc import Iterator
 from fastapi import Depends, Request, FastAPI, HTTPException, Header
 from sqlmodel import Session
 from sqlalchemy import Engine
-import redis.asyncio as redis
-import infer_dispatch, sessions, config, models, prompt_translate
+import redis.asyncio as asyncredis
+from . import infer_dispatch, sessions, config, models, prompt_translate
 import sysconf
 import wechat
 import minio  # type: ignore
@@ -18,6 +18,12 @@ def get_db_engine(app: FastAPI = Depends(get_app)) -> Engine:
     return app.state.db
 
 
+def get_asyncredis_conn_pool(
+    app: FastAPI = Depends(get_app),
+) -> asyncredis.ConnectionPool:
+    return app.state.async_rdb_conn_pool
+
+
 def get_db_session(engine: Engine = Depends(get_db_engine)) -> Iterator[Session]:
     with Session(engine) as s:
         yield s
@@ -26,7 +32,7 @@ def get_db_session(engine: Engine = Depends(get_db_engine)) -> Iterator[Session]
 HeaderField = Annotated[str, Header()]
 
 
-def get_rdb(app: FastAPI = Depends(get_app)) -> redis.Redis:
+def get_rdb(app: FastAPI = Depends(get_app)) -> asyncredis.Redis:
     return app.state.rdb
 
 
@@ -37,7 +43,7 @@ def get_auth_token(authorization: HeaderField) -> str:
     return token
 
 
-Rdb = Annotated[redis.Redis, Depends(get_rdb)]
+Rdb = Annotated[asyncredis.Redis, Depends(get_rdb)]
 
 AuthToken = Annotated[str, Depends(get_auth_token)]
 
@@ -88,4 +94,6 @@ def get_inference_client(db: Engine = Depends(get_db_engine)) -> infer_dispatch.
 def get_minio_client(
     conf: config.AppConfig = Depends(lambda: config.AppConfig()),
 ) -> minio.Minio:
-    return minio.Minio(conf.storage_endpoint, conf.storage_user, conf.storage_password, secure=False)
+    return minio.Minio(
+        conf.storage_endpoint, conf.storage_user, conf.storage_password, secure=False
+    )

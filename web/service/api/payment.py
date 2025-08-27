@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Depends
 import sysconf
 import wechat
-import deps, models, config, common
+from .. import deps, models, config, common
 from loguru import logger
 from datetime import datetime, timedelta
 from sqlmodel import select, Session

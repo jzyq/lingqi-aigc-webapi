@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends
-import deps, models
+from .. import deps, models
 from sqlmodel import select, Session
 from datetime import datetime
 import database

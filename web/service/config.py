@@ -24,6 +24,10 @@ class AppConfig(BaseSettings):
     storage_user: str = "minioadmin"
     storage_password: str = "minioadmin"
 
+    refresh_mainpage: bool = True
+
+    mongodb_url: str = "mongodb://localhost:27017/"
+
 
 @dataclass
 class MagicPointSubscription:

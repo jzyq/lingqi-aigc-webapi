@@ -1,8 +1,8 @@
-from remote_config import AuthToken, Bitable
+from .remote_config import AuthToken, Bitable
 from loguru import logger
 import redis
-from config import AppConfig, RemoteConfig
-from models import mainpage
+from .config import AppConfig, RemoteConfig
+from .models import mainpage
 import httpx
 import secrets
 from pydantic import BaseModel, TypeAdapter

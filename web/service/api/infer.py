@@ -13,7 +13,7 @@ from pydantic import BaseModel, ValidationError
 from sqlalchemy import Engine
 from sqlmodel import Session, select
 
-import config, deps, infer_dispatch, prompt_translate, sessions
+from .. import config, deps, infer_dispatch, prompt_translate, sessions
 import database
 
 

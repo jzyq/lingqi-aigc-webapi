@@ -2,7 +2,7 @@ from fastapi import APIRouter, Request, HTTPException, Response, Header, Depends
 from sqlmodel import select, Session
 from fastapi.responses import RedirectResponse
 
-import deps, sessions, models, config, common
+from .. import deps, sessions, models, config, common
 import json
 from loguru import logger
 from datetime import datetime
