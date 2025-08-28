@@ -2,7 +2,7 @@ from . import wx, user, payment, infer, gallery, main, download, heaven_album
 from . import dev  # type: ignore
 from fastapi import APIRouter
 
-router = APIRouter()
+router = APIRouter(prefix="/api")
 
 router.include_router(wx.router)
 router.include_router(user.router)

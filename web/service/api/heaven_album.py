@@ -73,13 +73,13 @@ async def create_heaven_album_task(req: CreateHeavenAlbumTaskRequest) -> APIResp
         id=PydanticObjectId(tid),
         uid=users.UserID(source=users.UserSource.wx_openid, ident=req.openid),
         tid=req.tid,
-        callback=f"http://localhost/heaven_album/task/{tid}/callback",
+        callback=f"https://www.lingqi.tech/aigc/api/heaven_album/task/{tid}/callback",
         requests=[
             inferences.Request.in_place(
                 infer_conf.service_host + infer_conf.endpoints.edit_with_prompt,
                 {"init_image": req.images[0], "text_prompt": prompts},
             )
-            for _ in range(12)
+            for _ in range(5)
         ],
     )
     await task.insert()
@@ -101,8 +101,6 @@ async def task_down_callback(tid: str, req: Request) -> APIResponse:
     if not task:
         logger.warning("no such task")
         return APIResponse()
-
-    # TODO do inference.
 
     access_token = PersistenceWxAccessToken(wx_conf.appid, wx_conf.secret)
     cloud_storage = WxCloudStorage(access_token, wx_conf.cloud_env)

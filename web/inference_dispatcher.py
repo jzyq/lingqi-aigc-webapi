@@ -61,16 +61,23 @@ class Dispatcher:
         await self.__notify_down(task.callback, resp)
 
     async def __process_composite_task(self, task: inferences.CompositeTask) -> None:
-        logger.info(f"process composite inference task {task.id}")
+        logger.info(
+            f"process composite inference task {task.id}, total request {len(task.requests)}"
+        )
 
         responses = []
-        for req in task.requests:
+        for i in range(len(task.requests)):
+            req = task.requests[i]
             url = req.url
+            logger.debug(f"process request {i}, url: {url}")
+
             body = await self.__read_request_data(req)
-
             resp = await self.__send_request(url, body)
-            responses.append(resp)
+            logger.debug(
+                f"request {i} have response, code: {resp['code']}, msg: {resp['msg']}"
+            )
 
+            responses.append(resp)
             task.response.append(inferences.Response.in_place(resp))
             task.utime = datetime.now()
             await task.save()
@@ -78,6 +85,7 @@ class Dispatcher:
         task.state = inferences.State.down
         task.utime = datetime.now()
         await task.save()
+        logger.info(f"task {task.id} complete.")
 
         await self.__notify_down(task.callback, {"results": responses})
 
@@ -101,6 +109,7 @@ class Dispatcher:
             return {"code": 1, "msg": f"sending inference request error: {e}"}
 
     async def __notify_down(self, url: str, resp: dict[str, Any]) -> None:
+        logger.debug(f"call task callback url {url}")
         async with httpx.AsyncClient() as client:
             await client.post(url=url, json=resp)
 

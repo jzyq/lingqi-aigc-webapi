@@ -98,3 +98,14 @@ services:
     ports:
       - 9000:9000
       - 9001:9001
+
+  mongodb:
+    image: mongodb/mongodb-community-server:latest
+    restart: always
+    volumes:
+      - <path>:/data/db
+    ports:
+      - 27017:27017
+
+volumes:
+  mongodb-data:

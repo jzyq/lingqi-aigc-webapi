@@ -59,7 +59,7 @@ def main(conf: config.AppConfig) -> None:
         app.state.db = db
         app.state.rdb = async_rdb
 
-        client = AsyncMongoClient("mongodb://localhost:27017")
+        client = AsyncMongoClient(conf.mongodb_url)
         await persistence.init_presistence(client)
         await init(client.aigc)
 
