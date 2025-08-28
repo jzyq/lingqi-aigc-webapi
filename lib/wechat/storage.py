@@ -35,7 +35,7 @@ class WxCloudStorage:
                 json={"env": self.__cloud_env, "path": filename},
             )
             upload_data = PreUploadData.model_validate_json(resp.content)
-            logger.debug(f"pre upload data:\n{upload_data}")
+            logger.trace(f"pre upload data:\n{upload_data}")
 
             resp = await client.post(
                 url=upload_data.url,

@@ -1,9 +1,10 @@
-from fastapi import APIRouter, Request
+from fastapi import APIRouter
 from pydantic import BaseModel
 from loguru import logger
 from enum import StrEnum
 from wechat.access_token import PersistenceWxAccessToken
 from wechat.storage import WxCloudStorage
+from wechat.rpc import HeavenAlbum
 import persistence.sysconf
 from zhipuai_client import ZhipuaiClient
 import io
@@ -72,14 +73,14 @@ async def create_heaven_album_task(req: CreateHeavenAlbumTaskRequest) -> APIResp
     task = inferences.CompositeTask(
         id=PydanticObjectId(tid),
         uid=users.UserID(source=users.UserSource.wx_openid, ident=req.openid),
-        tid=req.tid,
-        callback=f"https://www.lingqi.tech/aigc/api/heaven_album/task/{tid}/callback",
+        userdata=req.tid,
+        callback=f"https://www.lingqi.tech/aigc/api/heaven_album/task/callback",
         requests=[
             inferences.Request.in_place(
                 infer_conf.service_host + infer_conf.endpoints.edit_with_prompt,
                 {"init_image": req.images[0], "text_prompt": prompts},
             )
-            for _ in range(5)
+            for _ in range(1)
         ],
     )
     await task.insert()
@@ -87,49 +88,35 @@ async def create_heaven_album_task(req: CreateHeavenAlbumTaskRequest) -> APIResp
     return APIResponse()
 
 
-@router.post("/task/{tid}/callback")
-async def task_down_callback(tid: str, req: Request) -> APIResponse:
+@router.post("/task/callback")
+async def task_down_callback(req: inferences.CallbackData) -> APIResponse:
     wx_conf = await persistence.sysconf.WechatConfig.all().first_or_none()
     if not wx_conf:
         raise ValueError("no wechat config")
 
-    logger.info(tid)
-    data = await req.json()
-    logger.info(data)
-
-    task = await inferences.CompositeTask.get(tid)
-    if not task:
-        logger.warning("no such task")
-        return APIResponse()
-
     access_token = PersistenceWxAccessToken(wx_conf.appid, wx_conf.secret)
     cloud_storage = WxCloudStorage(access_token, wx_conf.cloud_env)
+    rpc_client = HeavenAlbum(access_token, wx_conf.cloud_env)
 
-    images = []
-    for res in data["results"]:
-        url = res["result"]["image"]
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(url)
+    match req.state:
+        case inferences.State.error:
+            await rpc_client.update_task(req.userdata, req.state)
+        case inferences.State.cancel:
+            await rpc_client.update_task(req.userdata, req.state)
+        case inferences.State.down:
+            if not req.result:
+                raise ValueError("task down must have result")
+            if not isinstance(req.result, inferences.CompositeResponse):
+                raise TypeError("result must be a composite response")
 
-            path = f"result/{task.tid}/{secrets.token_hex(3)}.jpg"
-            file_id = await cloud_storage.upload(path, io.BytesIO(resp.content))
-            logger.info(f"uploaded file id: {file_id}")
-            images.append(file_id)
-
-    notify_url = f"https://api.weixin.qq.com/tcb/invokecloudfunction"
-    async with httpx.AsyncClient() as client:
-        resp = await client.post(
-            url=notify_url,
-            params={
-                "access_token": await access_token.token,
-                "env": wx_conf.cloud_env,
-                "name": "aigc",
-            },
-            json={
-                "func": "heaven_album:task_down",
-                "params": {"tid": task.tid, "images": images},
-            },
-        )
-        logger.info(resp.text)
+            images = []
+            for url in req.result.data:
+                async with httpx.AsyncClient() as client:
+                    resp = await client.get(url)
+                    path = f"result/{req.userdata}/{secrets.token_hex(3)}.jpg"
+                    file_id = await cloud_storage.upload(path, io.BytesIO(resp.content))
+                    logger.info(f"uploaded file id: {file_id}")
+                    images.append(file_id)
+            await rpc_client.update_task(req.userdata, req.state, images)
 
     return APIResponse()

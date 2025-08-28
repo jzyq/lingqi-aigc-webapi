@@ -18,10 +18,20 @@ class Request(BaseModel):
         return Request(url=url, data_source=DataSource.in_place, data=data)
 
 
-class Response(BaseModel):
-    data_source: DataSource
-    data: dict[str, Any]
+class StandardResponse(BaseModel):
+    code: int = 0
+    msg: str = "ok"
+    data: str = ""
 
-    @staticmethod
-    def in_place(data: dict[str, Any]) -> "Response":
-        return Response(data_source=DataSource.in_place, data=data)
+
+class CompositeResponse(BaseModel):
+    code: int = 0
+    msg: str = "ok"
+    data: list[str] = []
+
+
+class InferenceResult(BaseModel):
+    code: int
+    msg: str
+    cost_time: str | None = None
+    data: list[str] | None = None
