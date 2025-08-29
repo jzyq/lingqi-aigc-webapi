@@ -12,10 +12,26 @@ class Request(BaseModel):
     url: str
     data_source: DataSource
     data: dict[str, Any]
+    ipt_sys_prompt: str | None = None
+    ipt_user_prompt: str | None = None
+    aigc_prompt: str | None = None
 
     @staticmethod
-    def in_place(url: str, data: dict[str, Any]) -> "Request":
-        return Request(url=url, data_source=DataSource.in_place, data=data)
+    def in_place(
+        url: str,
+        data: dict[str, Any],
+        ipt_sys_prompt: str | None = None,
+        ipt_user_prompt: str | None = None,
+        aigc_prompt: str | None = None,
+    ) -> "Request":
+        return Request(
+            url=url,
+            data_source=DataSource.in_place,
+            data=data,
+            ipt_sys_prompt=ipt_sys_prompt,
+            ipt_user_prompt=ipt_user_prompt,
+            aigc_prompt=aigc_prompt,
+        )
 
 
 class StandardResponse(BaseModel):

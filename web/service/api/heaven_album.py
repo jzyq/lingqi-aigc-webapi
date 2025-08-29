@@ -79,8 +79,11 @@ async def create_heaven_album_task(req: CreateHeavenAlbumTaskRequest) -> APIResp
             inferences.Request.in_place(
                 infer_conf.service_host + infer_conf.endpoints.edit_with_prompt,
                 {"init_image": req.images[0], "text_prompt": prompts},
+                ipt_sys_prompt=zhipuai_conf.heaven_album.system_prompt,
+                ipt_user_prompt=character,
+                aigc_prompt=prompts,
             )
-            for _ in range(1)
+            for _ in range(2)
         ],
     )
     await task.insert()

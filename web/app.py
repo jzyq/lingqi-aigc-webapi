@@ -18,6 +18,7 @@ from models import init
 from pymongo import AsyncMongoClient
 import inference_dispatcher
 import asyncio
+import admin
 
 
 def main(conf: config.AppConfig) -> None:
@@ -93,6 +94,7 @@ def main(conf: config.AppConfig) -> None:
 
     app = FastAPI(lifespan=lifespan)
     app.include_router(api.router)
+    app.mount("/admin/api", admin.webapp)
 
     if conf.mode == "dev":
         logger.info("develop mode")
