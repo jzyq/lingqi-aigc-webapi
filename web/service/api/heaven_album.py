@@ -72,7 +72,6 @@ async def create_heaven_album_task(req: CreateHeavenAlbumTaskRequest) -> APIResp
         character,
     )
     prompts = [x for x in prompts.splitlines() if len(x) != 0]
-    logger.debug(prompts)
 
     # Create new task
     tid = secrets.token_hex(12)
