@@ -15,6 +15,7 @@ class Request(BaseModel):
     ipt_sys_prompt: str | None = None
     ipt_user_prompt: str | None = None
     aigc_prompt: str | None = None
+    model: str | None = None
 
     @staticmethod
     def in_place(
@@ -23,6 +24,7 @@ class Request(BaseModel):
         ipt_sys_prompt: str | None = None,
         ipt_user_prompt: str | None = None,
         aigc_prompt: str | None = None,
+        model: str | None = None,
     ) -> "Request":
         return Request(
             url=url,
@@ -31,6 +33,7 @@ class Request(BaseModel):
             ipt_sys_prompt=ipt_sys_prompt,
             ipt_user_prompt=ipt_user_prompt,
             aigc_prompt=aigc_prompt,
+            model=model,
         )
 
 

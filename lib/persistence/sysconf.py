@@ -33,6 +33,7 @@ class WechatConfig(Document):
 class HeavenAlbumConf(BaseModel):
     model: str
     system_prompt: str
+    user_prompt: str
 
 
 class ZhipuaiConfig(Document):

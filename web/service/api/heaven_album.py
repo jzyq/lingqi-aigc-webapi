@@ -59,14 +59,20 @@ async def create_heaven_album_task(req: CreateHeavenAlbumTaskRequest) -> APIResp
         raise ValueError("no infer config")
 
     # generate prompt
-    character = f"姓名: {req.name}, 性别: {req.gender}, 信仰: {' '.join(req.faith)}, 爱好: {' '.join(req.hobby)}"
+    character = zhipuai_conf.heaven_album.user_prompt
+    character = (
+        character.replace("{{gender}}", req.gender)
+        .replace("{{faith}}", ", ".join(req.faith))
+        .replace("{{hobby_list}}", ", ".join([f"喜欢{x}" for x in req.hobby]))
+    )
     ai_client = ZhipuaiClient(zhipuai_conf.apikey)
     prompts = ai_client.heaven_album_prompt(
         zhipuai_conf.heaven_album.model,
         zhipuai_conf.heaven_album.system_prompt,
         character,
     )
-    logger.debug(f"{prompts}")
+    prompts = [x for x in prompts.splitlines() if len(x) != 0]
+    logger.debug(prompts)
 
     # Create new task
     tid = secrets.token_hex(12)
@@ -81,9 +87,10 @@ async def create_heaven_album_task(req: CreateHeavenAlbumTaskRequest) -> APIResp
                 {"init_image": req.images[0], "text_prompt": prompts},
                 ipt_sys_prompt=zhipuai_conf.heaven_album.system_prompt,
                 ipt_user_prompt=character,
-                aigc_prompt=prompts,
+                aigc_prompt=prompts[i],
+                model=zhipuai_conf.heaven_album.model,
             )
-            for _ in range(2)
+            for i in range(2)
         ],
     )
     await task.insert()
