@@ -1,4 +1,4 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, BackgroundTasks
 from pydantic import BaseModel
 from loguru import logger
 from enum import StrEnum
@@ -48,8 +48,56 @@ class UploadResp(BaseModel):
     cos_file_id: str
 
 
+async def prepare_inference(
+    tid: str,
+    req: CreateHeavenAlbumTaskRequest,
+    ai_conf: persistence.sysconf.ZhipuaiConfig,
+    infer_conf: persistence.sysconf.InferenceConfig,
+) -> None:
+
+    logger.info(f"preparing task {tid}")
+
+    ai_client = ZhipuaiClient(ai_conf.apikey)
+
+    # generate prompt
+    character = ai_conf.heaven_album.user_prompt
+    character = (
+        character.replace("{{gender}}", req.gender)
+        .replace("{{faith}}", ", ".join(req.faith))
+        .replace("{{hobby_list}}", ", ".join([f"喜欢{x}" for x in req.hobby]))
+    )
+
+    prompts = await ai_client.heaven_album_prompt(
+        ai_conf.heaven_album.model,
+        ai_conf.heaven_album.system_prompt,
+        character,
+    )
+    prompts = [x for x in prompts.splitlines() if len(x) != 0]
+
+    task = await inferences.CompositeTask.get(tid)
+    if not task:
+        logger.error(f"try prepare task, but no such task {tid}")
+        return
+
+    task.requests = [
+        inferences.Request.in_place(
+            infer_conf.service_host + infer_conf.endpoints.edit_with_prompt,
+            {"init_image": req.images[0], "text_prompt": prompts},
+            ipt_sys_prompt=ai_conf.heaven_album.system_prompt,
+            ipt_user_prompt=character,
+            aigc_prompt=prompts[i],
+            model=ai_conf.heaven_album.model,
+        )
+        for i in range(2)
+    ]
+    await task.set_ready()
+    logger.info(f"task {tid} ready to infer, enqueue waiting list...")
+
+
 @router.post("/task")
-async def create_heaven_album_task(req: CreateHeavenAlbumTaskRequest) -> APIResponse:
+async def create_heaven_album_task(
+    req: CreateHeavenAlbumTaskRequest, bg: BackgroundTasks
+) -> APIResponse:
     zhipuai_conf = await persistence.sysconf.ZhipuaiConfig.all().first_or_none()
     if not zhipuai_conf:
         raise ValueError("no zhipuai config")
@@ -58,41 +106,20 @@ async def create_heaven_album_task(req: CreateHeavenAlbumTaskRequest) -> APIResp
     if not infer_conf:
         raise ValueError("no infer config")
 
-    # generate prompt
-    character = zhipuai_conf.heaven_album.user_prompt
-    character = (
-        character.replace("{{gender}}", req.gender)
-        .replace("{{faith}}", ", ".join(req.faith))
-        .replace("{{hobby_list}}", ", ".join([f"喜欢{x}" for x in req.hobby]))
-    )
-    ai_client = ZhipuaiClient(zhipuai_conf.apikey)
-    prompts = ai_client.heaven_album_prompt(
-        zhipuai_conf.heaven_album.model,
-        zhipuai_conf.heaven_album.system_prompt,
-        character,
-    )
-    prompts = [x for x in prompts.splitlines() if len(x) != 0]
+    logger.info("request to create new heaven album task.")
+    logger.info(f"user openid {req.openid}, relevant task id {req.tid}")
 
-    # Create new task
     tid = secrets.token_hex(12)
     task = inferences.CompositeTask(
         id=PydanticObjectId(tid),
         uid=users.UserID(source=users.UserSource.wx_openid, ident=req.openid),
         userdata=req.tid,
         callback=f"https://www.lingqi.tech/aigc/api/heaven_album/task/callback",
-        requests=[
-            inferences.Request.in_place(
-                infer_conf.service_host + infer_conf.endpoints.edit_with_prompt,
-                {"init_image": req.images[0], "text_prompt": prompts},
-                ipt_sys_prompt=zhipuai_conf.heaven_album.system_prompt,
-                ipt_user_prompt=character,
-                aigc_prompt=prompts[i],
-                model=zhipuai_conf.heaven_album.model,
-            )
-            for i in range(2)
-        ],
     )
-    await task.insert()
+    await task.save()
+    logger.info(f"append inference task {tid}")
+
+    bg.add_task(prepare_inference, tid, req, zhipuai_conf, infer_conf)
 
     return APIResponse()
 

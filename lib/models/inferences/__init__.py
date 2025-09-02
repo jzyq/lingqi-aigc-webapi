@@ -9,6 +9,7 @@ from .models import *
 
 
 class State(StrEnum):
+    prepare = "prepare"
     waiting = "waiting"
     processing = "processing"
     down = "down"
@@ -20,7 +21,7 @@ class Inference(Document):
     uid: users.UserID
     userdata: str
     callback: str
-    state: State = State.waiting
+    state: State = State.prepare
     ctime: datetime = Field(default_factory=datetime.now)
     utime: datetime = Field(default_factory=datetime.now)
 
@@ -48,7 +49,7 @@ class StandardTask(Inference):
 
 
 class CompositeTask(Inference):
-    requests: list[Request]
+    requests: list[Request] | None = None
     response: CompositeResponse | None = None
 
     async def add_data(self, data: str) -> None:
@@ -67,6 +68,11 @@ class CompositeTask(Inference):
         self.response = CompositeResponse(code=code, msg=msg)
         self.utime = datetime.now()
         self.state = State.error
+        await self.save()
+
+    async def set_ready(self) -> None:
+        self.utime = datetime.now()
+        self.state = State.waiting
         await self.save()
 
 
