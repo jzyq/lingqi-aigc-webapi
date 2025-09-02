@@ -82,7 +82,7 @@ async def prepare_inference(
     task.requests = [
         inferences.Request.in_place(
             infer_conf.service_host + infer_conf.endpoints.edit_with_prompt,
-            {"init_image": req.images[0], "text_prompt": prompts},
+            {"init_image": req.images[0], "text_prompt": prompts[i]},
             ipt_sys_prompt=ai_conf.heaven_album.system_prompt,
             ipt_user_prompt=character,
             aigc_prompt=prompts[i],
@@ -90,6 +90,7 @@ async def prepare_inference(
         )
         for i in range(2)
     ]
+    logger.info(task)
     await task.set_ready()
     logger.info(f"task {tid} ready to infer, enqueue waiting list...")
 
