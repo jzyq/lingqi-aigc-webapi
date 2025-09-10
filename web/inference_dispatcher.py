@@ -30,8 +30,16 @@ class Dispatcher:
 
                 async for task in waiting_tasks:
                     logger.info(f"find waiting task {task.id}")
-                    await self.__serve_next(task)
-                    await self.__callback(task)
+
+                    # TODO: change timeout be a config params.
+                    try:
+                        async with asyncio.timeout(1800):
+                            await self.__serve_next(task)
+                            await self.__callback(task)
+                    except asyncio.TimeoutError:
+                        task.state = inferences.State.error
+                        task.utime = datetime.now()
+                        await task.save()
 
                 await asyncio.sleep(1)
 
@@ -77,6 +85,9 @@ class Dispatcher:
             )
 
     async def __process_composite_task(self, task: inferences.CompositeTask) -> None:
+        if not task.requests:
+            raise ValueError("task requests must not be none, task not ready.")
+
         logger.info(
             f"process composite inference task {task.id}, total request {len(task.requests)}"
         )

@@ -11,8 +11,12 @@ import io
 import httpx
 
 import secrets
-from models import inferences, users
+from models import inferences, users, get_gridfs
 from beanie import PydanticObjectId
+
+import imglib
+from PIL import Image, ImageChops
+import asyncio
 
 
 class APIResponse(BaseModel):
@@ -33,6 +37,92 @@ class CreateHeavenAlbumTaskRequest(BaseModel):
     gender: Gender
     faith: list[str]
     hobby: list[str]
+
+
+class InferenceRequest(BaseModel):
+    init_image: str | None = None
+    mask_image: str | None = None
+    text_prompt: str | None = None
+    segment_prompt: str | None = None
+
+
+class InferenceResult(BaseModel):
+    rmbg_mask: str | None = None
+    rmbg_rgba: str | None = None
+    image: str | None = None
+
+
+class InferenceResponse(BaseModel):
+    code: int
+    msg: str
+    cost_time: str | None = None
+    result: InferenceResult | None = None
+
+
+class InferenceError(Exception):
+    pass
+
+
+async def generate_background_mask(src: Image.Image) -> Image.Image:
+    url = "http://app4.zpanx.cn:8701" + "/segment_any"
+    req_body = InferenceRequest(
+        init_image=imglib.image_to_b64(src).decode(), segment_prompt="rmbg"
+    )
+
+    async with httpx.AsyncClient(timeout=None) as client:
+        response = await client.post(url, json=req_body.model_dump(exclude_none=True))
+        res = InferenceResponse.model_validate_json(response.content)
+
+        if res.code != 0:
+            raise InferenceError(res.msg)
+        if res.result == None or res.result.rmbg_mask == None:
+            raise InferenceError("no segment result")
+
+        mask: Image.Image | None = None
+        async with imglib.open_remote_image(res.result.rmbg_mask) as raw:
+            mask = ImageChops.invert(raw)
+
+        return mask
+
+
+async def generate_normalized_image(
+    src: Image.Image, mask: Image.Image, prompt: str
+) -> Image.Image:
+    url = "http://app4.zpanx.cn:8701" + "/replace_with_any"
+    req = InferenceRequest(
+        init_image=imglib.image_to_b64(src).decode(),
+        mask_image=imglib.image_to_b64(mask).decode(),
+        text_prompt=prompt,
+    )
+
+    async with httpx.AsyncClient(timeout=None) as client:
+        response = await client.post(url, json=req.model_dump(exclude_none=True))
+
+        res = InferenceResponse.model_validate_json(response.content)
+
+        if res.code != 0:
+            raise InferenceError(res.msg)
+        if res.result == None or res.result.image == None:
+            raise InferenceError("no inference result")
+
+        result: Image.Image | None = None
+        async with imglib.open_remote_image(res.result.image) as img:
+            result = img.copy()
+
+        return result
+
+
+async def normailize_input_image(url: str) -> Image.Image:
+    res: Image.Image | None = None
+
+    async with imglib.open_remote_image(url) as ipt:
+        stretched = await asyncio.to_thread(imglib.keep_ratio_stretch_to_height, ipt)
+        extended = await asyncio.to_thread(imglib.resize, stretched)
+        mask = await generate_background_mask(extended)
+        text_prompt = "A surreal cosmic starry sky, vast glowing nebulae, luminous galaxies, dreamy aurora-like lights, surrealism style, vibrant colors, deep blues and purples with glowing pink and teal highlights, ultra-detailed, cinematic, ethereal atmosphere"
+        res = await generate_normalized_image(extended, mask, prompt=text_prompt)
+
+    return res
 
 
 router = APIRouter(prefix="/heaven_album")
@@ -56,6 +146,13 @@ async def prepare_inference(
 ) -> None:
 
     logger.info(f"preparing task {tid}")
+    task = await inferences.CompositeTask.get(tid)
+
+    norimalized_input = await normailize_input_image(req.images[0])
+
+    if not task:
+        logger.error(f"try prepare task, but no such task {tid}")
+        return
 
     ai_client = ZhipuaiClient(ai_conf.apikey)
 
@@ -74,23 +171,20 @@ async def prepare_inference(
     )
     prompts = [x for x in prompts.splitlines() if len(x) != 0]
 
-    task = await inferences.CompositeTask.get(tid)
-    if not task:
-        logger.error(f"try prepare task, but no such task {tid}")
-        return
-
     task.requests = [
         inferences.Request.in_place(
             infer_conf.service_host + infer_conf.endpoints.edit_with_prompt,
-            {"init_image": req.images[0], "text_prompt": prompts[i]},
+            {
+                "init_image": imglib.image_to_b64(norimalized_input).decode(),
+                "text_prompt": prompts[i],
+            },
             ipt_sys_prompt=ai_conf.heaven_album.system_prompt,
             ipt_user_prompt=character,
             aigc_prompt=prompts[i],
             model=ai_conf.heaven_album.model,
         )
-        for i in range(2)
+        for i in range(4)
     ]
-    logger.info(task)
     await task.set_ready()
     logger.info(f"task {tid} ready to infer, enqueue waiting list...")
 
