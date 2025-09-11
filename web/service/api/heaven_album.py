@@ -11,7 +11,7 @@ import io
 import httpx
 
 import secrets
-from models import inferences, users, get_gridfs
+from models import inferences, users
 from beanie import PydanticObjectId
 
 import imglib

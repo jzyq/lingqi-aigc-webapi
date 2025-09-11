@@ -19,6 +19,8 @@ from pymongo import AsyncMongoClient
 import inference_dispatcher
 import asyncio
 import admin
+import ossapp
+import oss
 
 
 def main(conf: config.AppConfig) -> None:
@@ -63,6 +65,7 @@ def main(conf: config.AppConfig) -> None:
         client = AsyncMongoClient(conf.mongodb_url)
         await persistence.init_presistence(client)
         await init(client.aigc)
+        await oss.init(client.aigc)
 
         disp = inference_dispatcher.Dispatcher(client.aigc)
         task = asyncio.create_task(disp.serve_forever())
@@ -95,6 +98,7 @@ def main(conf: config.AppConfig) -> None:
     app = FastAPI(lifespan=lifespan)
     app.include_router(api.router)
     app.mount("/admin/api", admin.webapp)
+    app.mount("/oss", ossapp.make_app(ossapp.Config()))
 
     if conf.mode == "dev":
         logger.info("develop mode")
