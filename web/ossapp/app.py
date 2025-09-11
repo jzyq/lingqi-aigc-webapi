@@ -49,7 +49,12 @@ async def get_file(fid: str) -> StreamingResponse:
     async with oss.load_file(fid) as fp:
         return StreamingResponse(
             fp,
-            headers={"content-length": str(fp.length), "content-type": fp.content_type},
+            headers={
+                "content-length": str(fp.length),
+                "content-type": fp.content_type,
+                "Content-Disposition": f"attachment; filename={fp.filename}",
+                "Access-Control-Allow-Origin": "*",
+            },
         )
 
 

@@ -13,3 +13,4 @@ mysql-connector-python
 minio
 pymongo
 beanie
+python-multipart

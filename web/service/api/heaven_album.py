@@ -17,6 +17,8 @@ from beanie import PydanticObjectId
 import imglib
 from PIL import Image, ImageChops
 import asyncio
+import oss
+import secrets
 
 
 class APIResponse(BaseModel):
@@ -149,6 +151,12 @@ async def prepare_inference(
     task = await inferences.CompositeTask.get(tid)
 
     norimalized_input = await normailize_input_image(req.images[0])
+    fid = ""
+    async with oss.save_file(f"{secrets.token_hex(8)}.png", "image/png") as writer:
+        buf = io.BytesIO()
+        await asyncio.to_thread(norimalized_input.save, buf, "png")
+        await writer.write_bytes(buf.getvalue())
+        fid = writer.file_id
 
     if not task:
         logger.error(f"try prepare task, but no such task {tid}")
@@ -172,10 +180,11 @@ async def prepare_inference(
     prompts = [x for x in prompts.splitlines() if len(x) != 0]
 
     task.requests = [
-        inferences.Request.in_place(
-            infer_conf.service_host + infer_conf.endpoints.edit_with_prompt,
-            {
-                "init_image": imglib.image_to_b64(norimalized_input).decode(),
+        inferences.Request(
+            url=infer_conf.service_host + infer_conf.endpoints.edit_with_prompt,
+            data_source=inferences.DataSource.gridfs,
+            data={
+                "init_image": fid,
                 "text_prompt": prompts[i],
             },
             ipt_sys_prompt=ai_conf.heaven_album.system_prompt,

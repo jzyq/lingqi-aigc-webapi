@@ -32,6 +32,9 @@ class OssWriter:
     async def write(self, content: BinaryIO):
         await self.__in.write(content)
 
+    async def write_bytes(self, content: bytes):
+        await self.__in.write(content)
+
 
 class OssReader:
 
@@ -45,6 +48,10 @@ class OssReader:
     @property
     def content_type(self) -> str:
         return self.__out.content_type if self.__out.content_type else ""
+
+    @property
+    def filename(self) -> str:
+        return self.__out.filename
 
     async def read(self, size: int = -1) -> bytes:
         return await self.__out.read(size)

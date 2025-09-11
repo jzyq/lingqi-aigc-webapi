@@ -5,9 +5,9 @@ from models import inferences
 from datetime import datetime
 from pymongo.asynchronous.database import AsyncDatabase
 from typing import Any
-import json
-import gridfs
 import httpx
+import oss
+import base64
 
 
 class Dispatcher:
@@ -126,9 +126,10 @@ class Dispatcher:
             case inferences.DataSource.in_place:
                 return req.data
             case inferences.DataSource.gridfs:
-                fs = gridfs.AsyncGridFS(self.__db)
-                out = await fs.get(file_id=req.data)
-                return json.load(out)
+                data = req.data
+                async with oss.load_file(data["init_image"]) as fp:
+                    data["init_image"] = base64.b64encode(await fp.read()).decode()
+                return data
 
     async def __send_request(
         self, url: str, body: dict[str, Any]
