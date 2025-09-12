@@ -1,5 +1,6 @@
 from pymongo.asynchronous.database import AsyncDatabase
 from . import inferences
+from . import logs
 
 
 async def init(db: AsyncDatabase) -> None:
@@ -11,5 +12,6 @@ async def init(db: AsyncDatabase) -> None:
             inferences.Inference,
             inferences.StandardTask,
             inferences.CompositeTask,
+            logs.Logs,
         ],
     )

@@ -246,6 +246,7 @@ async def task_down_callback(req: inferences.CallbackData) -> APIResponse:
             if not isinstance(req.result, inferences.CompositeResponse):
                 raise TypeError("result must be a composite response")
 
+            # FIXME this part too long.
             images = []
             for url in req.result.data:
                 async with httpx.AsyncClient() as client:

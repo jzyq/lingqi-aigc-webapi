@@ -1,12 +1,13 @@
 import asyncio
 from loguru import logger
-from models import inferences
+from models import inferences, logs
 from datetime import datetime
 from pymongo.asynchronous.database import AsyncDatabase
 import httpx
 import oss
 import base64
 from pydantic import BaseModel
+import traceback
 
 
 class InferenceRequest(BaseModel):
@@ -50,7 +51,14 @@ class Dispatcher:
             except asyncio.CancelledError as e:
                 raise e
             except Exception as exc:
-                logger.error(f"inference dispatcher serve error: {exc}")
+                logger.error(f"inference dispatcher serve error: {repr(exc)}")
+                oplog = logs.Logs(
+                    level=logs.LogLevel.error,
+                    category="inference dispatcher",
+                    title=f"inference dispatcher server error {repr(exc)}",
+                    detail=traceback.format_exc(),
+                )
+                await oplog.save()
 
     async def __serve_next(self, task: inferences.Inference) -> None:
         await task.sync()
@@ -165,7 +173,8 @@ class Dispatcher:
         if isinstance(task, inferences.CompositeTask):
             cb_data.result = task.response
 
-        async with httpx.AsyncClient() as client:
+        # FIXME temporary give a timeout 30s to avoid error logs, but still need to fix call back slow problems.
+        async with httpx.AsyncClient(timeout=30.0) as client:
             await client.post(url=task.callback, json=cb_data.model_dump())
 
 
