@@ -1,13 +1,17 @@
 import asyncio
-from typing import Any
 from loguru import logger
 from models import inferences
 from datetime import datetime
 from pymongo.asynchronous.database import AsyncDatabase
-from typing import Any
 import httpx
 import oss
 import base64
+from pydantic import BaseModel
+
+
+class InferenceRequest(BaseModel):
+    init_image: str
+    text_prompt: str | None = None
 
 
 class Dispatcher:
@@ -121,22 +125,29 @@ class Dispatcher:
         logger.info(f"task {task.id} complete.")
         return await task.set_success()
 
-    async def __read_request_data(self, req: inferences.Request) -> dict[str, Any]:
-        match req.data_source:
+    async def __read_request_data(self, req: inferences.Request) -> InferenceRequest:
+        match req.image_source:
             case inferences.DataSource.in_place:
-                return req.data
+                request = InferenceRequest(
+                    init_image=req.image, text_prompt=req.aigc_prompt
+                )
+                return request
             case inferences.DataSource.gridfs:
-                data = req.data
-                async with oss.load_file(data["init_image"]) as fp:
-                    data["init_image"] = base64.b64encode(await fp.read()).decode()
-                return data
+                async with oss.load_file(req.image) as fp:
+                    request = InferenceRequest(
+                        init_image=base64.b64encode(await fp.read()).decode(),
+                        text_prompt=req.aigc_prompt,
+                    )
+                    return request
 
     async def __send_request(
-        self, url: str, body: dict[str, Any]
+        self, url: str, body: InferenceRequest
     ) -> inferences.InferenceResult:
         try:
             async with httpx.AsyncClient(timeout=None) as client:
-                resp = await client.post(url=url, json=body)
+                resp = await client.post(
+                    url=url, json=body.model_dump(exclude_none=True)
+                )
                 resp.raise_for_status()
                 return inferences.InferenceResult.model_validate_json(resp.content)
         except httpx.HTTPError as e:

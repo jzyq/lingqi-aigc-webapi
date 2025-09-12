@@ -182,11 +182,8 @@ async def prepare_inference(
     task.requests = [
         inferences.Request(
             url=infer_conf.service_host + infer_conf.endpoints.edit_with_prompt,
-            data_source=inferences.DataSource.gridfs,
-            data={
-                "init_image": fid,
-                "text_prompt": prompts[i],
-            },
+            image_source=inferences.DataSource.gridfs,
+            image=fid,
             ipt_sys_prompt=ai_conf.heaven_album.system_prompt,
             ipt_user_prompt=character,
             aigc_prompt=prompts[i],
