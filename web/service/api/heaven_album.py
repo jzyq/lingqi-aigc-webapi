@@ -29,6 +29,7 @@ class APIResponse(BaseModel):
 class Gender(StrEnum):
     male = "男"
     female = "女"
+    other = "其他"
 
 
 class CreateHeavenAlbumTaskRequest(BaseModel):
