@@ -21,6 +21,9 @@ import asyncio
 import admin
 import ossapp
 import oss
+import dataio
+import rpcclient
+import wxproxy
 
 
 def main(conf: config.AppConfig) -> None:
@@ -66,8 +69,10 @@ def main(conf: config.AppConfig) -> None:
         await persistence.init_presistence(client)
         await init(client.aigc)
         await oss.init(client.aigc)
+        await dataio.init(conf.mongodb_url)
+        await rpcclient.init("http://127.0.0.1:8090", rpcclient.Prefix())
 
-        disp = inference_dispatcher.Dispatcher(client.aigc)
+        disp = inference_dispatcher.Dispatcher()
         task = asyncio.create_task(disp.serve_forever())
 
         depends.Initlization.set_async_redis_connection_pool(app, async_redis_conn_pool)
@@ -99,6 +104,7 @@ def main(conf: config.AppConfig) -> None:
     app.include_router(api.router)
     app.mount("/admin/api", admin.webapp)
     app.mount("/oss", ossapp.make_app(ossapp.Config()))
+    app.mount("/wechat", wxproxy.make_app())
 
     if conf.mode == "dev":
         logger.info("develop mode")

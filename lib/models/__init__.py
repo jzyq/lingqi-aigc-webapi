@@ -1,6 +1,7 @@
 from pymongo.asynchronous.database import AsyncDatabase
 from . import inferences
 from . import logs
+from . import system_config
 
 
 async def init(db: AsyncDatabase) -> None:
@@ -11,7 +12,9 @@ async def init(db: AsyncDatabase) -> None:
         document_models=[
             inferences.Inference,
             inferences.StandardTask,
-            inferences.CompositeTask,
+            inferences.HeavenAlbum,
             logs.Logs,
         ],
     )
+
+    await system_config.init(db)

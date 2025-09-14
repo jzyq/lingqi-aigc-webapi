@@ -1,7 +1,6 @@
 from fastapi import APIRouter, BackgroundTasks
 from pydantic import BaseModel
 from loguru import logger
-from enum import StrEnum
 from wechat.access_token import PersistenceWxAccessToken
 from wechat.storage import WxCloudStorage
 from wechat.rpc import HeavenAlbum
@@ -12,7 +11,6 @@ import httpx
 
 import secrets
 from models import inferences, users
-from beanie import PydanticObjectId
 
 import imglib
 from PIL import Image, ImageChops
@@ -26,18 +24,12 @@ class APIResponse(BaseModel):
     msg: str = "ok"
 
 
-class Gender(StrEnum):
-    male = "男"
-    female = "女"
-    other = "其他"
-
-
 class CreateHeavenAlbumTaskRequest(BaseModel):
     tid: str
     openid: str
     images: list[str]
     name: str
-    gender: Gender
+    gender: inferences.Gender
     faith: list[str]
     hobby: list[str]
 
@@ -143,34 +135,32 @@ class UploadResp(BaseModel):
 
 async def prepare_inference(
     tid: str,
-    req: CreateHeavenAlbumTaskRequest,
     ai_conf: persistence.sysconf.ZhipuaiConfig,
-    infer_conf: persistence.sysconf.InferenceConfig,
 ) -> None:
 
     logger.info(f"preparing task {tid}")
-    task = await inferences.CompositeTask.get(tid)
-
-    norimalized_input = await normailize_input_image(req.images[0])
-    fid = ""
-    async with oss.save_file(f"{secrets.token_hex(8)}.png", "image/png") as writer:
-        buf = io.BytesIO()
-        await asyncio.to_thread(norimalized_input.save, buf, "png")
-        await writer.write_bytes(buf.getvalue())
-        fid = writer.file_id
+    task = await inferences.HeavenAlbum.get(tid)
 
     if not task:
         logger.error(f"try prepare task, but no such task {tid}")
         return
+
+    async with oss.save_file(f"{secrets.token_hex(8)}.png", "image/png") as writer:
+        norimalized_input = await normailize_input_image(task.picture)
+        buf = io.BytesIO()
+        await asyncio.to_thread(norimalized_input.save, buf, "png")
+        await writer.write_bytes(buf.getvalue())
+        task.norimalized_picture = writer.file_id
+        await task.save()
 
     ai_client = ZhipuaiClient(ai_conf.apikey)
 
     # generate prompt
     character = ai_conf.heaven_album.user_prompt
     character = (
-        character.replace("{{gender}}", req.gender)
-        .replace("{{faith}}", ", ".join(req.faith))
-        .replace("{{hobby_list}}", ", ".join([f"喜欢{x}" for x in req.hobby]))
+        character.replace("{{gender}}", task.gender)
+        .replace("{{faith}}", ", ".join(task.faith))
+        .replace("{{hobby_list}}", ", ".join([f"喜欢{x}" for x in task.hobby]))
     )
 
     prompts = await ai_client.heaven_album_prompt(
@@ -178,21 +168,13 @@ async def prepare_inference(
         ai_conf.heaven_album.system_prompt,
         character,
     )
-    prompts = [x for x in prompts.splitlines() if len(x) != 0]
 
-    task.requests = [
-        inferences.Request(
-            url=infer_conf.service_host + infer_conf.endpoints.edit_with_prompt,
-            image_source=inferences.DataSource.gridfs,
-            image=fid,
-            ipt_sys_prompt=ai_conf.heaven_album.system_prompt,
-            ipt_user_prompt=character,
-            aigc_prompt=prompts[i],
-            model=ai_conf.heaven_album.model,
-        )
-        for i in range(4)
-    ]
+    task.ipt_sys_prompt = ai_conf.heaven_album.system_prompt
+    task.ipt_user_prompt = character
+    task.model = ai_conf.heaven_album.model
+    task.aigc_prompts = [x for x in prompts.splitlines() if len(x) != 0]
     await task.set_ready()
+
     logger.info(f"task {tid} ready to infer, enqueue waiting list...")
 
 
@@ -211,17 +193,22 @@ async def create_heaven_album_task(
     logger.info("request to create new heaven album task.")
     logger.info(f"user openid {req.openid}, relevant task id {req.tid}")
 
-    tid = secrets.token_hex(12)
-    task = inferences.CompositeTask(
-        id=PydanticObjectId(tid),
+    task = inferences.HeavenAlbum(
+        inference_endpoint=infer_conf.service_host
+        + infer_conf.endpoints.edit_with_prompt,
+        nickname=req.name,
+        picture=req.images[0],
+        gender=req.gender,
+        faith=req.faith,
+        hobby=req.hobby,
         uid=users.UserID(source=users.UserSource.wx_openid, ident=req.openid),
         userdata=req.tid,
         callback=f"https://www.lingqi.tech/aigc/api/heaven_album/task/callback",
     )
     await task.save()
-    logger.info(f"append inference task {tid}")
+    logger.info(f"append inference task {str(task.id)}")
 
-    bg.add_task(prepare_inference, tid, req, zhipuai_conf, infer_conf)
+    bg.add_task(prepare_inference, str(task.id), zhipuai_conf)
 
     return APIResponse()
 
@@ -256,6 +243,9 @@ async def task_down_callback(req: inferences.CallbackData) -> APIResponse:
                     file_id = await cloud_storage.upload(path, io.BytesIO(resp.content))
                     logger.info(f"uploaded file id: {file_id}")
                     images.append(file_id)
+
+            # TODO Append normalized picture as a result.
+
             await rpc_client.update_task(req.userdata, req.state, images)
 
     return APIResponse()

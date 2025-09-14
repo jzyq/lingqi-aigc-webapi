@@ -7,6 +7,14 @@ from beanie import Document
 
 from .models import *
 
+from typing import Sequence
+
+
+class Gender(StrEnum):
+    male = "男"
+    female = "女"
+    other = "其他"
+
 
 class State(StrEnum):
     prepare = "prepare"
@@ -48,8 +56,20 @@ class StandardTask(Inference):
         await self.save()
 
 
-class CompositeTask(Inference):
-    requests: list[Request] | None = None
+class HeavenAlbum(Inference):
+    inference_endpoint: str
+    
+    nickname: str
+    picture: str
+    gender: Gender
+    faith: Sequence[str]
+    hobby: Sequence[str]
+
+    ipt_sys_prompt: str | None = None
+    ipt_user_prompt: str | None = None
+    model: str | None = None
+    aigc_prompts: Sequence[str] = []
+    norimalized_picture: str | None = None
     response: CompositeResponse | None = None
 
     async def add_data(self, data: str) -> None:
