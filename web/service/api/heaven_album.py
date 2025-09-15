@@ -169,10 +169,11 @@ async def prepare_inference(
         character,
     )
 
+    prefix = "portrait photo, close-up or half-body or three-quarter body, natural composition, --no full body, --no standing, --no wide shot."
     task.ipt_sys_prompt = ai_conf.heaven_album.system_prompt
     task.ipt_user_prompt = character
     task.model = ai_conf.heaven_album.model
-    task.aigc_prompts = [x for x in prompts.splitlines() if len(x) != 0]
+    task.aigc_prompts = [prefix + x for x in prompts.splitlines() if len(x) != 0]
     await task.set_ready()
 
     logger.info(f"task {tid} ready to infer, enqueue waiting list...")
