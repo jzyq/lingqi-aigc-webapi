@@ -49,8 +49,8 @@ class Wechat:
         url = self.__endpoint + "/login/qrcode"
         async with httpx.AsyncClient() as client:
             try:
-                resp = await client.post(
-                    url, json={"redirect_url": redirect_url, "state": state}
+                resp = await client.get(
+                    url, params={"redirect_url": redirect_url, "state": state}
                 )
                 resp.raise_for_status()
                 return resp.json()["url"]

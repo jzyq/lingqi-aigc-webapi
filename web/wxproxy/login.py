@@ -6,27 +6,22 @@ from dataio import config
 router = APIRouter(prefix="/login")
 
 
-class GetQRCodeLoginUrlRequest(BaseModel):
-    redirect_url: str
-    state: str
-
-
 class GetQRCodeLoginUrlResponse(BaseModel):
     url: str
 
 
 @router.get("/qrcode")
 async def gen_qrcode_login_url(
-    req: GetQRCodeLoginUrlRequest,
+    redirect_url: str, state: str
 ) -> GetQRCodeLoginUrlResponse:
     conf = await config.wechat.Login.get()
 
     url = (
         "https://open.weixin.qq.com/connect/qrconnect"
         + f"?appid={conf.appid}"
-        + f"&redirect_uri={req.redirect_url}"
+        + f"&redirect_uri={redirect_url}"
         + "&response_type=code&scope=snsapi_login"
-        + f"&state={req.state}"
+        + f"&state={state}"
         + "#wechat_redirect"
     )
 
