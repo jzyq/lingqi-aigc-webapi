@@ -13,7 +13,7 @@ async def main() -> None:
 
     app = FastAPI()
 
-    app.include_router(api.wx.router)
+    app.include_router(api.router)
 
     app.mount("/wechat", wxproxy.make_app())
 
