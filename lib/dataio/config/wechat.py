@@ -15,7 +15,7 @@ class HeavenAlbum(BaseModel):
     async def get() -> "HeavenAlbum":
         res = await system_config.WechatConfig.find_one()
 
-        if not res:
+        if not res or not res.heaven_album:
             raise errors.NotExists("wechat heaven album config not exists")
 
         ha = HeavenAlbum(
@@ -42,5 +42,27 @@ class HeavenAlbum(BaseModel):
             conf = system_config.WechatConfig(heaven_album=ha)
         else:
             conf.heaven_album = ha
+
+        await conf.save()
+
+
+class Login(BaseModel):
+    appid: str
+
+    @staticmethod
+    async def get() -> "Login":
+        conf = await system_config.WechatConfig.find_one()
+        if not conf or not conf.login:
+            raise errors.NotExists("wechat login config not exists")
+        return Login(appid=conf.login.appid)
+
+    async def save(self) -> None:
+        login = system_config.WechatLogin(appid=self.appid)
+
+        conf = await system_config.WechatConfig.find_one()
+        if not conf:
+            conf = system_config.WechatConfig(login=login)
+        else:
+            conf.login = login
 
         await conf.save()

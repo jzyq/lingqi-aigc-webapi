@@ -26,5 +26,10 @@ class HeavenAlbum(BaseModel):
     access_token_expires: datetime | None = None
 
 
+class WechatLogin(BaseModel):
+    appid: str
+
+
 class WechatConfig(SystemConfig):
-    heaven_album: HeavenAlbum
+    heaven_album: HeavenAlbum | None = None
+    login: WechatLogin | None = None

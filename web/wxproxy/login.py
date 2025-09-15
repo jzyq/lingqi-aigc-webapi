@@ -1,12 +1,14 @@
 from fastapi import APIRouter
 from pydantic import BaseModel
+from dataio import config
 
 
 router = APIRouter(prefix="/login")
 
 
 class GetQRCodeLoginUrlRequest(BaseModel):
-    pass
+    redirect_url: str
+    state: str
 
 
 class GetQRCodeLoginUrlResponse(BaseModel):
@@ -17,4 +19,15 @@ class GetQRCodeLoginUrlResponse(BaseModel):
 async def gen_qrcode_login_url(
     req: GetQRCodeLoginUrlRequest,
 ) -> GetQRCodeLoginUrlResponse:
-    return GetQRCodeLoginUrlResponse(url="123")
+    conf = await config.wechat.Login.get()
+
+    url = (
+        "https://open.weixin.qq.com/connect/qrconnect"
+        + f"?appid={conf.appid}"
+        + f"&redirect_uri={req.redirect_url}"
+        + "&response_type=code&scope=snsapi_login"
+        + f"&state={req.state}"
+        + "#wechat_redirect"
+    )
+
+    return GetQRCodeLoginUrlResponse(url=url)
