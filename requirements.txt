@@ -1,0 +1,6 @@
+fastapi
+pymongo
+beanie
+httpx
+loguru
+python-multipart

@@ -1,8 +1,6 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter
 from .. import deps, models
-from sqlmodel import select, Session
-from datetime import datetime
-import database
+from dataio import users
 
 router = APIRouter(prefix="/user")
 
@@ -10,41 +8,13 @@ router = APIRouter(prefix="/user")
 @router.get("/info")
 async def user_info(
     ses: deps.UserSession,
-    db: Session = Depends(deps.get_db_session),
 ) -> models.user.GetUserInfoResponse:
-    userinfo = db.get_one(database.user.User, ses.uid)
-    subscription = db.exec(
-        select(database.subscription.Subscription)
-        .where(database.subscription.Subscription.uid == ses.uid)
-        .where(database.subscription.Subscription.expired == False)
-    ).all()
-
-    # Subscription should have only one.
-    expires_in: datetime | None = None
-    point_in_today: int = 0
-    is_member = False
-
-    for s in [
-        s for s in subscription if s.stype == database.subscription.Type.subscription
-    ]:
-        if s.expired == True:
-            continue
-
-        expires_in = s.expires_in
-        is_member = True
-        point_in_today += s.remains
-
-    if not is_member:
-        for s in [
-            s for s in subscription if s.stype == database.subscription.Type.trail
-        ]:
-            point_in_today += s.remains
-
+    uinfo = await users.UserInfo.get(ses.uid)
     return models.user.GetUserInfoResponse(
-        username=userinfo.username,
-        nickname=userinfo.nickname,
-        avatar=userinfo.avatar,
-        point=point_in_today,
-        expires_in=expires_in,
-        is_member=is_member,
+        username=uinfo.username,
+        nickname=uinfo.nickname,
+        avatar=uinfo.avatar,
+        point=await uinfo.remain_point(),
+        is_member=await uinfo.is_member(),
+        expires_in=await uinfo.member_expires(),
     )

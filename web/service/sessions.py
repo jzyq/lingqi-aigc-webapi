@@ -10,7 +10,7 @@ TOKEN_LEN = 16
 SESSION_KEY = "aigc::ses::{}"
 UID_SESSION_MAP_KEY = "aigc::uid-to-ses"
 
-
+# FIXME change type of uid to string
 class Session(BaseModel):
     uid: int
     nickname: str
