@@ -12,14 +12,14 @@ class GetQRCodeLoginUrlResponse(BaseModel):
 
 @router.get("/qrcode")
 async def gen_qrcode_login_url(
-    redirect_url: str, state: str
+    state: str
 ) -> GetQRCodeLoginUrlResponse:
     conf = await config.wechat.Login.get()
 
     url = (
         "https://open.weixin.qq.com/connect/qrconnect"
         + f"?appid={conf.appid}"
-        + f"&redirect_uri={redirect_url}"
+        + f"&redirect_uri={conf.redirect_url}"
         + "&response_type=code&scope=snsapi_login"
         + f"&state={state}"
         + "#wechat_redirect"

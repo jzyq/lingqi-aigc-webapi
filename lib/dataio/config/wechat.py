@@ -48,16 +48,19 @@ class HeavenAlbum(BaseModel):
 
 class Login(BaseModel):
     appid: str
+    redirect_url: str
 
     @staticmethod
     async def get() -> "Login":
         conf = await system_config.WechatConfig.find_one()
         if not conf or not conf.login:
             raise errors.NotExists("wechat login config not exists")
-        return Login(appid=conf.login.appid)
+        return Login(appid=conf.login.appid, redirect_url=conf.login.redirect_url)
 
     async def save(self) -> None:
-        login = system_config.WechatLogin(appid=self.appid)
+        login = system_config.WechatLogin(
+            appid=self.appid, redirect_url=self.redirect_url
+        )
 
         conf = await system_config.WechatConfig.find_one()
         if not conf:

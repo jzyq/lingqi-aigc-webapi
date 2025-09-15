@@ -202,5 +202,5 @@ router = APIRouter(prefix="/wx")
 @router.get("/qrlogin")
 async def qrcode_login() -> RedirectResponse:
     client = rpcclient.Client()
-    url = await client.wechat.generate_login_qrcode_url("http://localhost", "")
+    url = await client.wechat.generate_login_qrcode_url()
     return RedirectResponse(url=url)

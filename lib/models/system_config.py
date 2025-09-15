@@ -28,6 +28,7 @@ class HeavenAlbum(BaseModel):
 
 class WechatLogin(BaseModel):
     appid: str
+    redirect_url: str
 
 
 class WechatConfig(SystemConfig):
