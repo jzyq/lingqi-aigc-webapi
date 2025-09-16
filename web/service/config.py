@@ -20,10 +20,6 @@ class AppConfig(BaseSettings):
 
     db_url: str = "mysql+mysqlconnector://aigc:q1w2e3r4@mysql:3306/aigc"
 
-    storage_endpoint: str = "minio:9000"
-    storage_user: str = "minioadmin"
-    storage_password: str = "minioadmin"
-
     refresh_mainpage: bool = True
 
     mongodb_url: str = "mongodb://localhost:27017/"
@@ -127,7 +123,9 @@ class Config:
             remote_config=RemoteConfig.load(toml["remote_config"]),
         )
 
+
 _default_filepath = "config.toml"
+
 
 @cache
 def get_config(filepath: str | None = None) -> Config:

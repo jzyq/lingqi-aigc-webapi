@@ -7,7 +7,6 @@ import redis.asyncio as asyncredis
 from . import infer_dispatch, sessions, config, models, prompt_translate
 import sysconf
 import wechat
-import minio  # type: ignore
 
 
 def get_app(req: Request) -> FastAPI:
@@ -82,11 +81,3 @@ def get_translator(
 
 def get_inference_client(db: Engine = Depends(get_db_engine)) -> infer_dispatch.Client:
     return infer_dispatch.Client(db)
-
-
-def get_minio_client(
-    conf: config.AppConfig = Depends(lambda: config.AppConfig()),
-) -> minio.Minio:
-    return minio.Minio(
-        conf.storage_endpoint, conf.storage_user, conf.storage_password, secure=False
-    )
