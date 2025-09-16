@@ -74,13 +74,6 @@ def get_wxclient(
     return wechat.client.new_client(secrets)
 
 
-def get_main_page_data() -> models.mainpage.MainPageData:
-    path = "mainpage/config.json"
-    with open(path, "r") as fp:
-        data = models.mainpage.MainPageData.model_validate_json(fp.read())
-    return data
-
-
 def get_translator(
     conf: config.Config = Depends(config.get_config),
 ) -> prompt_translate.ZhipuaiClient:

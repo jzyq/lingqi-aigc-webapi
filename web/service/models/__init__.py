@@ -1,1 +1,1 @@
-from . import user, payment, mainpage  # type: ignore
+from . import user, payment  # type: ignore

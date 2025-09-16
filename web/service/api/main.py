@@ -1,8 +1,6 @@
-from fastapi import APIRouter, Depends
-from pydantic import BaseModel, TypeAdapter
-import redis.asyncio
-from .. import models, deps
-from ..mainpage_config import BannerItem
+from fastapi import APIRouter
+from pydantic import BaseModel
+from dataio.config import mainpage
 
 
 class APIResponse(BaseModel):
@@ -11,49 +9,40 @@ class APIResponse(BaseModel):
 
 
 class BannerItemList(APIResponse):
-    items: list[models.mainpage.BannerData]
+    items: list[mainpage.BannerItem]
 
 
 class MagicShowcases(APIResponse):
-    magic: models.mainpage.Magic
+    magic: mainpage.Magic
 
 
 class ShortcutRespnose(APIResponse):
-    shortcuts: list[models.mainpage.Shortcut] = []
+    shortcuts: list[mainpage.ShortcutItem] = []
 
 
 router = APIRouter(prefix="/main")
 
 
 @router.get("/banner")
-async def get_main_page_banner_data(
-    rdb: redis.asyncio.Redis = Depends(deps.get_rdb),
-) -> BannerItemList:
-    data = await rdb.get("aigc:banner")
-    adapter = TypeAdapter(list[BannerItem])
-    items = adapter.validate_json(data)
-
+async def get_main_page_banner_data() -> BannerItemList:
+    banner = await mainpage.Banner.get()
     res = BannerItemList(items=[])
-    for i in items:
-        d = models.mainpage.BannerData(image=i.image, video=i.video)
-        res.items.append(d)
-
+    for i in banner.banners:
+        res.items.append(i)
     return res
 
 
 @router.get("/shortcut")
-async def get_shortcuts_data(rdb: redis.asyncio.Redis = Depends(deps.get_rdb)) -> ShortcutRespnose:
-    adapter = TypeAdapter(list[models.mainpage.Shortcut])
-    data = await rdb.get("aigc:shortcut")
-    items = adapter.validate_json(data)
-    return ShortcutRespnose(shortcuts=items)
+async def get_shortcuts_data() -> ShortcutRespnose:
+    shortcut = await mainpage.Shortcut.get()
+    resp = ShortcutRespnose(shortcuts=[])
+    for s in shortcut.shortcuts:
+        resp.shortcuts.append(s)
+    return resp
 
 
 @router.get("/magic")
-async def get_main_page_showcase_data(
-    rdb: redis.asyncio.Redis = Depends(deps.get_rdb),
-) -> MagicShowcases:
-    data = await rdb.get("aigc:magic")
-    magic = models.mainpage.Magic.model_validate_json(data)
+async def get_main_page_showcase_data() -> MagicShowcases:
+    magic = await mainpage.Magic.get()
     resp = MagicShowcases(magic=magic)
     return resp

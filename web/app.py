@@ -14,7 +14,7 @@ from service import (
     depends,
 )
 import persistence
-from models import init
+import models
 from pymongo import AsyncMongoClient
 import inference_dispatcher
 import asyncio
@@ -27,7 +27,7 @@ import wxproxy
 import oplog
 
 
-def main(conf: config.AppConfig) -> None:
+async def main(conf: config.AppConfig) -> None:
 
     # Setup redis client.
     async_rdb = asyncredis.Redis(
@@ -60,19 +60,19 @@ def main(conf: config.AppConfig) -> None:
     dispatch_thread = Thread(target=srv.serve_forever, daemon=True)
     dispatch_thread.start()
 
+    client = AsyncMongoClient(conf.mongodb_url)
+    await persistence.init_presistence(client)
+    await models.init(client.aigc)
+    await oss.init(client.aigc)
+    await dataio.init(conf.mongodb_url)
+    await oplog.init(conf.mongodb_url)
+    await rpcclient.init("http://127.0.0.1:8090", rpcclient.Prefix())
+
     # Use app lifespan function to cleanup resource after shutdown.
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         app.state.db = db
         app.state.rdb = async_rdb
-
-        client = AsyncMongoClient(conf.mongodb_url)
-        await persistence.init_presistence(client)
-        await init(client.aigc)
-        await oss.init(client.aigc)
-        await dataio.init(conf.mongodb_url)
-        await oplog.init(conf.mongodb_url)
-        await rpcclient.init("http://127.0.0.1:8090", rpcclient.Prefix())
 
         disp = inference_dispatcher.Dispatcher()
         task = asyncio.create_task(disp.serve_forever())
@@ -97,10 +97,10 @@ def main(conf: config.AppConfig) -> None:
             secret="KSRIFs0wipqk4zTv6LBVZd0xPyxjHs3E",
             bitable_id="UrycwJ6bQiWmEqkyU74cSh01nNh",
         )
-        mrc = mainpage_config.MainPageRemoteConfig(conf, rc)
-        mrc.refresh_banner()
-        mrc.refresh_magic()
-        mrc.refresh_shortcut()
+        mrc = mainpage_config.MainPageRemoteConfig(rc)
+        await mrc.refresh_banner()
+        await mrc.refresh_magic()
+        await mrc.refresh_shortcut()
 
     app = FastAPI(lifespan=lifespan)
     app.include_router(api.router)
@@ -112,13 +112,15 @@ def main(conf: config.AppConfig) -> None:
         logger.info("develop mode")
         app.include_router(api.dev.router, prefix="/dev")
 
-    try:
-        uvicorn.run(app, host=conf.api_host, port=conf.api_port, timeout_keep_alive=300)
-    except KeyboardInterrupt:
-        pass
-    finally:
-        pass
+    srv_conf = uvicorn.Config(
+        app, host=conf.api_host, port=conf.api_port, timeout_keep_alive=300
+    )
+    srv = uvicorn.Server(srv_conf)
+    await srv.serve()
 
 
 if __name__ == "__main__":
-    main(config.AppConfig())
+    try:
+        asyncio.run(main(config.AppConfig()))
+    except KeyboardInterrupt:
+        pass
