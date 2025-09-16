@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 from datetime import datetime
-from models import system_config
+from models.system_config import wechat
 from .. import errors
 
 
@@ -13,9 +13,9 @@ class HeavenAlbum(BaseModel):
 
     @staticmethod
     async def get() -> "HeavenAlbum":
-        res = await system_config.WechatConfig.find_one()
+        res = await wechat.WechatConfig.find_one()
 
-        if not res:
+        if not res or not res.heaven_album:
             raise errors.NotExists("wechat heaven album config not exists")
 
         ha = HeavenAlbum(
@@ -29,7 +29,7 @@ class HeavenAlbum(BaseModel):
         return ha
 
     async def save(self) -> None:
-        ha = system_config.HeavenAlbum(
+        ha = wechat.HeavenAlbum(
             cloud_env=self.cloud_env,
             appid=self.appid,
             secret=self.secret,
@@ -37,10 +37,36 @@ class HeavenAlbum(BaseModel):
             access_token_expires=self.access_token_expires,
         )
 
-        conf = await system_config.WechatConfig.find_one()
+        conf = await wechat.WechatConfig.find_one()
         if not conf:
-            conf = system_config.WechatConfig(heaven_album=ha)
+            conf = wechat.WechatConfig(heaven_album=ha)
         else:
             conf.heaven_album = ha
 
+        await conf.save()
+
+
+class Login(BaseModel):
+    appid: str
+    redirect_url: str
+
+    @staticmethod
+    async def get() -> "Login":
+        res = await wechat.WechatConfig.find_one()
+        if not res or not res.login:
+            raise errors.NotExists("wechat login config not exists")
+
+        return Login(
+            appid=res.login.appid,
+            redirect_url=res.login.redirect_url,
+        )
+
+    async def save(self) -> None:
+        login = wechat.Login(appid=self.appid, redirect_url=self.redirect_url)
+
+        conf = await wechat.WechatConfig.find_one()
+        if not conf:
+            conf = wechat.WechatConfig(login=login)
+        else:
+            conf.login = login
         await conf.save()

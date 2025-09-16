@@ -1,3 +1,4 @@
+from email.policy import HTTP
 from fastapi import APIRouter, Request, HTTPException, Response, Header, Depends
 from sqlmodel import select, Session
 from fastapi.responses import RedirectResponse
@@ -11,7 +12,11 @@ from dateutil.relativedelta import relativedelta
 from typing import Annotated
 import database
 import wechat
-import sysconf
+
+import rpcclient
+from rpcclient import errors
+import traceback
+import oplog
 
 
 router = APIRouter(prefix="/wx")
@@ -211,10 +216,17 @@ async def wechat_pay_callback(
 
 
 @router.get("/qrlogin")
-async def qrcode_login(
-    conf: sysconf.wechat.Config = Depends(deps.get_wechat_conf),
-    wx: wechat.client.WxClient = Depends(deps.get_wxclient),
-):
-    if not conf.login_redirect_url:
-        raise HTTPException(500, "wechat login redirect url must set first.")
-    return RedirectResponse(url=wx.get_qrcode_login_url(conf.login_redirect_url, ""))
+async def qrcode_login():
+    client = rpcclient.Client()
+    try:
+        url = await client.wechat.generate_qrcode_login_url()
+        return RedirectResponse(url=url)
+    except errors.CallError as exc:
+        await oplog.logger.error(
+            oplog.Category.webapi,
+            "generate qrcode login url failed",
+            traceback.format_exc(),
+        )
+        raise HTTPException(
+            500, "can not generate qrcode login url, detail check oplog."
+        ) from exc

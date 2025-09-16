@@ -3,14 +3,22 @@ from enum import StrEnum
 from datetime import datetime
 from pydantic import Field
 from typing import Sequence
+from pymongo.asynchronous.database import AsyncDatabase
+
+
+async def init(db: AsyncDatabase) -> None:
+    from beanie import init_beanie
+
+    await init_beanie(db, document_models=[Log])
 
 
 class LogLevel(StrEnum):
     info = "info"
+    warning = "warning"
     error = "error"
 
 
-class Logs(Document):
+class Log(Document):
     level: LogLevel
     ctime: datetime = Field(default_factory=datetime.now)
     category: str

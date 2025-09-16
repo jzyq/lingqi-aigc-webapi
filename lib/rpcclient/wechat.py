@@ -44,3 +44,15 @@ class Wechat:
                 raise errors.CallError(
                     f"call wechat rpc: update heaven album task state failed, detail: {str(exc)}"
                 ) from exc
+
+    async def generate_qrcode_login_url(self, state: str = "") -> str:
+        url = self.__endpoint + "/login/qrcode"
+        async with httpx.AsyncClient() as client:
+            try:
+                resp = await client.get(url, params={"state": state})
+                resp.raise_for_status()
+                return resp.json()["url"]
+            except httpx.HTTPError as exc:
+                raise errors.CallError(
+                    "call wechat generate qrcode login url failed, relevant rpc endpoint: wechat generate login qrcode"
+                ) from exc

@@ -24,6 +24,7 @@ import oss
 import dataio
 import rpcclient
 import wxproxy
+import oplog
 
 
 def main(conf: config.AppConfig) -> None:
@@ -70,6 +71,7 @@ def main(conf: config.AppConfig) -> None:
         await init(client.aigc)
         await oss.init(client.aigc)
         await dataio.init(conf.mongodb_url)
+        await oplog.init(conf.mongodb_url)
         await rpcclient.init("http://127.0.0.1:8090", rpcclient.Prefix())
 
         disp = inference_dispatcher.Dispatcher()

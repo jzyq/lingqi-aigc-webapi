@@ -13,8 +13,7 @@ async def init(db: AsyncDatabase) -> None:
             inferences.Inference,
             inferences.StandardTask,
             inferences.HeavenAlbum,
-            logs.Logs,
         ],
     )
-
+    await logs.init(db)
     await system_config.init(db)
