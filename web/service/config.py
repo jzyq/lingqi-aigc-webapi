@@ -14,10 +14,6 @@ class AppConfig(BaseSettings):
     api_host: str = "0.0.0.0"
     api_port: int = 80
 
-    redis_host: str = "redis"
-    redis_port: int = 6379
-    redis_db: int = 0
-
     db_url: str = "mysql+mysqlconnector://aigc:q1w2e3r4@mysql:3306/aigc"
 
     refresh_mainpage: bool = True

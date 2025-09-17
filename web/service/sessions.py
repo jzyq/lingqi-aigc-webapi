@@ -1,70 +1,31 @@
-import redis.asyncio as redis
-import random
-from pydantic import BaseModel
-from datetime import datetime, timedelta
+from dataio.sessions import Session
 
 
-random.seed()
-
-TOKEN_LEN = 16
-SESSION_KEY = "aigc::ses::{}"
-UID_SESSION_MAP_KEY = "aigc::uid-to-ses"
+async def create_new_session(uid: int, nickname: str) -> str:
+    ses = await Session.new(uid, nickname)
+    return ses.token
 
 
-class Session(BaseModel):
-    uid: int
-    nickname: str
-    login_time: datetime
-    expires: datetime
+async def get_session_or_none(token: str) -> Session | None:
+    ses = await Session.get(token)
+    return ses
 
 
-def generate_new_token(k: int) -> str:
-    seq = random.choices("0123456789abcdef", k=k)
-    return "".join(seq)
+async def delete_session(token: str):
+    ses = await Session.get(token)
+    if ses:
+        await ses.delete()
 
 
-async def create_new_session(rdb: redis.Redis, uid: int, nickname: str) -> str:
-    dt = datetime.now()
-    ttl = 7200
-    session = Session(
-        uid=uid, nickname=nickname, login_time=dt, expires=dt + timedelta(seconds=ttl)
-    )
-    token = generate_new_token(TOKEN_LEN)
-
-    p = rdb.pipeline()
-    await p.set(SESSION_KEY.format(token), session.model_dump_json(), ex=ttl)
-    p.hset(name=UID_SESSION_MAP_KEY, key=str(uid), value=token)  # type: ignore
-    await p.execute()
-
-    return token
-
-
-async def get_session_or_none(rdb: redis.Redis, token: str) -> Session | None:
-    resp = await rdb.get(SESSION_KEY.format(token))
-    return resp if resp is None else Session.model_validate_json(resp)
-
-
-async def delete_session(rdb: redis.Redis, token: str):
-    p = rdb.pipeline()
-    await p.delete(SESSION_KEY.format(token))
-    p.hdel(UID_SESSION_MAP_KEY, token)
-    await p.execute()
-
-
-async def refresh_session(rdb: redis.Redis, token: str):
-    ses = await get_session_or_none(rdb, token)
-    if ses is None:
+async def refresh_session(token: str):
+    ses = await Session.get(token)
+    if not ses:
         return
-
-    ttl = 7200
-    ses.expires = datetime.now() + timedelta(seconds=ttl)
-    await rdb.set(SESSION_KEY.format(token), ses.model_dump_json(), ex=ttl)
+    await ses.refresh()
 
 
-async def find_session_by_uid(rdb: redis.Redis, uid: int) -> tuple[str, Session] | None:
-    token = await rdb.hget(UID_SESSION_MAP_KEY, str(uid))  # type: ignore
-    if not isinstance(token, str):
-        return None
-
-    resp = await rdb.get(SESSION_KEY.format(token))
-    return None if resp is None else (token, Session.model_validate_json(resp))
+async def find_session_by_uid(uid: int) -> tuple[str, Session] | None:
+    ses = await Session.find_by_uid(uid)
+    if not ses:
+        return ses
+    return (ses.token, ses)

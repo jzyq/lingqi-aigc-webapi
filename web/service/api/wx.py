@@ -26,7 +26,6 @@ router = APIRouter(prefix="/wx")
 async def wechat_login_callback(
     code: str,
     state: str,
-    rdb: deps.Rdb,
     db: Session = Depends(deps.get_db_session),
     conf: config.Config = Depends(config.get_config),
     wx: wechat.client.WxClient = Depends(deps.get_wxclient),
@@ -58,7 +57,7 @@ async def wechat_login_callback(
         assert user is not None and user.id is not None
 
         # If already login and valid, use same one.
-        result = await sessions.find_session_by_uid(rdb, user.id)
+        result = await sessions.find_session_by_uid(user.id)
 
         if result is not None:
             token, _ = result
@@ -66,7 +65,7 @@ async def wechat_login_callback(
             return RedirectResponse(url=f"{state}?token={token}")
 
         # If no login, create a new session.
-        token = await sessions.create_new_session(rdb, user.id, user.nickname)
+        token = await sessions.create_new_session(user.id, user.nickname)
         logger.info(f"login with new token {token}")
         return RedirectResponse(url=f"{state}?token={token}")
 
@@ -112,7 +111,7 @@ async def wechat_login_callback(
         db.add(subscription)
         db.commit()
 
-        token = await sessions.create_new_session(rdb, new_user.id, new_user.nickname)
+        token = await sessions.create_new_session(new_user.id, new_user.nickname)
         logger.info(f"login with new token {token}")
 
         # 重定向到前端并携带token

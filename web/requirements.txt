@@ -1,4 +1,3 @@
-redis[hiredis]
 fastapi
 uvicorn
 loguru

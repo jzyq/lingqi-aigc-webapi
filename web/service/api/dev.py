@@ -1,6 +1,5 @@
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
-import redis.asyncio
 from sqlmodel import Session, select
 from .. import deps, sessions
 import database
@@ -51,7 +50,6 @@ async def register_user(
 async def user_login(
     req: UserLoginRequest,
     dbsession: Session = Depends(deps.get_db_session),
-    rdb: redis.asyncio.Redis = Depends(deps.get_rdb),
 ) -> APIResponse:
     query = select(database.user.User).where(
         database.user.User.username == req.username
@@ -61,7 +59,7 @@ async def user_login(
         return APIResponse(code=1, msg="no such user")
     assert u.id
 
-    tk = await sessions.create_new_session(rdb, u.id, u.nickname)
+    tk = await sessions.create_new_session(u.id, u.nickname)
     return APIResponse(msg=tk)
 
 

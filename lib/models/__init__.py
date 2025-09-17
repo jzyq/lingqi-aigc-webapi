@@ -2,6 +2,7 @@ from pymongo.asynchronous.database import AsyncDatabase
 from . import inferences
 from . import logs
 from . import system_config
+from . import session
 
 
 async def init(db: AsyncDatabase) -> None:
@@ -17,3 +18,4 @@ async def init(db: AsyncDatabase) -> None:
     )
     await logs.init(db)
     await system_config.init(db)
+    await session.init(db)

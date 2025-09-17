@@ -3,8 +3,7 @@ from collections.abc import Iterator
 from fastapi import Depends, Request, FastAPI, HTTPException, Header
 from sqlmodel import Session
 from sqlalchemy import Engine
-import redis.asyncio as asyncredis
-from . import infer_dispatch, sessions, config, models, prompt_translate
+from . import infer_dispatch, sessions, config, prompt_translate
 import sysconf
 import wechat
 
@@ -17,22 +16,12 @@ def get_db_engine(app: FastAPI = Depends(get_app)) -> Engine:
     return app.state.db
 
 
-def get_asyncredis_conn_pool(
-    app: FastAPI = Depends(get_app),
-) -> asyncredis.ConnectionPool:
-    return app.state.async_rdb_conn_pool
-
-
 def get_db_session(engine: Engine = Depends(get_db_engine)) -> Iterator[Session]:
     with Session(engine) as s:
         yield s
 
 
 HeaderField = Annotated[str, Header()]
-
-
-def get_rdb(app: FastAPI = Depends(get_app)) -> asyncredis.Redis:
-    return app.state.rdb
 
 
 def get_auth_token(authorization: HeaderField) -> str:
@@ -42,18 +31,16 @@ def get_auth_token(authorization: HeaderField) -> str:
     return token
 
 
-Rdb = Annotated[asyncredis.Redis, Depends(get_rdb)]
-
 AuthToken = Annotated[str, Depends(get_auth_token)]
 
 
-async def get_user_session(rdb: Rdb, token: AuthToken) -> sessions.Session:
-    ses = await sessions.get_session_or_none(rdb, token)
+async def get_user_session(token: AuthToken) -> sessions.Session:
+    ses = await sessions.get_session_or_none(token)
     if ses is None:
         raise HTTPException(status_code=401, detail="no valid authorization to access.")
 
     # Refersh session automaticly when have valid session.
-    await sessions.refresh_session(rdb, token)
+    await sessions.refresh_session(token)
     return ses
 
 

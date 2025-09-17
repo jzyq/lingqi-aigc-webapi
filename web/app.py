@@ -1,4 +1,3 @@
-import redis.asyncio as asyncredis
 import uvicorn
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
@@ -11,7 +10,6 @@ from service import (
     infer_dispatch,
     refresh_subscriptions,
     mainpage_config,
-    depends,
 )
 import persistence
 import models
@@ -28,21 +26,6 @@ import oplog
 
 
 async def main(conf: config.AppConfig) -> None:
-
-    # Setup redis client.
-    async_rdb = asyncredis.Redis(
-        host=conf.redis_host,
-        port=conf.redis_port,
-        db=conf.redis_db,
-        decode_responses=True,
-    )
-
-    async_redis_conn_pool = asyncredis.ConnectionPool(
-        host=conf.redis_host,
-        port=conf.redis_port,
-        db=conf.redis_db,
-        decode_responses=True,
-    )
 
     # Setup database client.
     db = create_engine(conf.db_url)
@@ -72,19 +55,13 @@ async def main(conf: config.AppConfig) -> None:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         app.state.db = db
-        app.state.rdb = async_rdb
 
         disp = inference_dispatcher.Dispatcher()
         task = asyncio.create_task(disp.serve_forever())
 
-        depends.Initlization.set_async_redis_connection_pool(app, async_redis_conn_pool)
-
         try:
             yield
         finally:
-            await async_rdb.aclose()
-            await async_redis_conn_pool.aclose()
-
             try:
                 task.cancel()
                 await task
